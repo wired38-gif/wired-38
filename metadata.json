@@ -1,0 +1,6 @@
+{
+  "name": "MYK.IO",
+  "description": "Hyper-efficient AI decision engine that estimates, structures, and refines complex prompts into cost-optimized tiered execution plans.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
