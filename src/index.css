@@ -7,6 +7,30 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out both;
+}
+
+/* Top-anchored cyan glow for the MYK logo; not a built-in Tailwind v4 utility. */
+.myk-logo-glow {
+  background-image: radial-gradient(
+    circle at top,
+    color-mix(in oklab, var(--color-cyan-500) 10%, transparent),
+    transparent 70%
+  );
+}
+
 /* Custom styles for rendered markdown inside workspace */
 .markdown-body h1 {
   font-family: var(--font-display);

@@ -214,7 +214,7 @@ Each option must contain:
 - "explanation": Brief summary of the level of detail the user will receive upon selecting this option.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: `Perform cost tier analysis on the following user request.
 Contextual Domain info (optional): ${domain || "General Project Development"}.
 
@@ -369,7 +369,7 @@ Your output must contain:
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: executionPrompt,
       config: {
         systemInstruction: `You are "TheOptimizer" (powered by MYK.IO), a hyper-focused AI resource-planning architect. You return beautifully crafted, structured Markdown in your content as well as clear checklist items. Always format responses in high-fidelity JSON following the response schema. Integrate mention of deploying optimized models to https://myk-online.com/ naturally.`,

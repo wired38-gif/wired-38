@@ -81,7 +81,7 @@ function MykLogo({ className = "w-16 h-16" }: { className?: string }) {
       {/* Glowing horizontal light reflections from design */}
       <div className="absolute top-0 inset-x-0 h-[1.5px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
       <div className="absolute bottom-0 inset-x-0 h-[1.5px] bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
-      <div className="absolute inset-0 bg-radial-at-t from-cyan-500/10 via-transparent to-transparent pointer-events-none opacity-40"></div>
+      <div className="absolute inset-0 myk-logo-glow pointer-events-none opacity-40"></div>
       
       {/* Top Code Block */}
       <div className="text-[10px] font-mono font-black text-cyan-400 select-none tracking-widest drop-shadow-[0_0_6px_rgba(34,211,238,0.7)] select-none">
