@@ -1,13 +1,124 @@
 import express from "express";
 import path from "path";
+import crypto from "crypto";
+import type { NextFunction, Request, Response } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
 // Global express setup
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
+const SESSION_COOKIE_NAME = "myk_io_session";
+const SESSION_TTL_SECONDS = 8 * 60 * 60;
 
 app.use(express.json());
+app.set("trust proxy", 1);
+
+type SessionPayload = {
+  sub: string;
+  exp: number;
+};
+
+function getAdminCredentials() {
+  return {
+    username: process.env.ADMIN_USERNAME,
+    password: process.env.ADMIN_PASSWORD,
+  };
+}
+
+function getAuthSecret() {
+  return process.env.AUTH_SECRET || process.env.ADMIN_PASSWORD || "";
+}
+
+function isAuthConfigured() {
+  const credentials = getAdminCredentials();
+  return Boolean(credentials.username && credentials.password && getAuthSecret());
+}
+
+function hashValue(value: string) {
+  return crypto.createHash("sha256").update(value).digest();
+}
+
+function constantTimeEqual(a: string, b: string) {
+  return crypto.timingSafeEqual(hashValue(a), hashValue(b));
+}
+
+function signPayload(encodedPayload: string) {
+  return crypto
+    .createHmac("sha256", getAuthSecret())
+    .update(encodedPayload)
+    .digest("base64url");
+}
+
+function createSessionToken(username: string) {
+  const payload: SessionPayload = {
+    sub: username,
+    exp: Date.now() + SESSION_TTL_SECONDS * 1000,
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${encodedPayload}.${signPayload(encodedPayload)}`;
+}
+
+function parseCookies(cookieHeader: string | undefined) {
+  const cookies: Record<string, string> = {};
+  if (!cookieHeader) return cookies;
+
+  for (const cookie of cookieHeader.split(";")) {
+    const [name, ...valueParts] = cookie.trim().split("=");
+    if (!name || valueParts.length === 0) continue;
+    cookies[name] = decodeURIComponent(valueParts.join("="));
+  }
+
+  return cookies;
+}
+
+function verifySessionToken(token: string | undefined) {
+  if (!token || !isAuthConfigured()) return false;
+
+  const [encodedPayload, signature] = token.split(".");
+  if (!encodedPayload || !signature) return false;
+
+  const expectedSignature = signPayload(encodedPayload);
+  if (!constantTimeEqual(signature, expectedSignature)) return false;
+
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as SessionPayload;
+    return typeof payload.sub === "string" && typeof payload.exp === "number" && payload.exp > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function isAuthenticated(req: Request) {
+  const cookies = parseCookies(req.headers.cookie);
+  return verifySessionToken(cookies[SESSION_COOKIE_NAME]);
+}
+
+function buildSessionCookie(token: string, req: Request) {
+  const secure = req.secure || process.env.NODE_ENV === "production";
+  const parts = [
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${SESSION_TTL_SECONDS}`,
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+function clearSessionCookie() {
+  return `${SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!isAuthenticated(req)) {
+    res.status(401).json({ error: "Authentication required." });
+    return;
+  }
+
+  next();
+}
 
 // Lazy-loaded GoogleGenAI client to avoid crashes if the key isn't configured yet
 let aiClient: GoogleGenAI | null = null;
@@ -36,12 +147,48 @@ app.get("/api/status", (req, res) => {
   res.json({
     status: "ok",
     hasApiKey: hasKey,
+    authConfigured: isAuthConfigured(),
+    authenticated: isAuthenticated(req),
     timestamp: new Date().toISOString(),
   });
 });
 
+app.post("/api/login", (req, res) => {
+  if (!isAuthConfigured()) {
+    res.status(503).json({
+      error: "Admin authentication is not configured. Set ADMIN_USERNAME and ADMIN_PASSWORD on the server.",
+    });
+    return;
+  }
+
+  const { username, password } = req.body;
+  const credentials = getAdminCredentials();
+  const validUsername =
+    typeof username === "string" &&
+    typeof credentials.username === "string" &&
+    constantTimeEqual(username, credentials.username);
+  const validPassword =
+    typeof password === "string" &&
+    typeof credentials.password === "string" &&
+    constantTimeEqual(password, credentials.password);
+
+  if (!validUsername || !validPassword) {
+    res.status(401).json({ error: "Invalid administrator credentials." });
+    return;
+  }
+
+  const token = createSessionToken(credentials.username as string);
+  res.setHeader("Set-Cookie", buildSessionCookie(token, req));
+  res.json({ authenticated: true });
+});
+
+app.post("/api/logout", (req, res) => {
+  res.setHeader("Set-Cookie", clearSessionCookie());
+  res.json({ authenticated: false });
+});
+
 // 2. API Endpoint: Analyze Request and produce 3 options
-app.post("/api/analyze-prompt", async (req, res) => {
+app.post("/api/analyze-prompt", requireAuth, async (req, res) => {
   try {
     const { prompt, domain, selectedLlm } = req.body;
     if (!prompt || typeof prompt !== "string") {
@@ -111,7 +258,7 @@ User Request: "${prompt}"`,
 });
 
 // 3. API Endpoint: Execute / Refine Selected Option
-app.post("/api/refine-prompt", async (req, res) => {
+app.post("/api/refine-prompt", requireAuth, async (req, res) => {
   try {
     const { prompt, tier, domain, optionData, selectedLlm } = req.body;
     if (!prompt) {

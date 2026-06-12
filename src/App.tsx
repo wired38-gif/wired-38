@@ -345,8 +345,8 @@ export default function App() {
       }
     }
     return [
-      { id: "mem-1", key: "Admin Username Override", value: "wired4365", scope: "cloud" },
-      { id: "mem-2", key: "Production Database Endpoint", value: "postgres://db.myk-online.com:5432/main", scope: "cloud" },
+      { id: "mem-1", key: "Admin Principal", value: "server-configured", scope: "cloud" },
+      { id: "mem-2", key: "Production Database Endpoint", value: "configured-in-server-secrets", scope: "cloud" },
       { id: "mem-3", key: "Core Compile Fallback System", value: "Gemini 2.5 Flash Primary", scope: "local" }
     ];
   });
@@ -365,7 +365,7 @@ export default function App() {
     return Number(localStorage.getItem("myk_io_wizard_step")) || 1;
   });
   const [wizardUrl, setWizardUrl] = useState<string>("https://myk-online.com/auth/login");
-  const [wizardUserVal, setWizardUserVal] = useState("wired4365");
+  const [wizardUserVal, setWizardUserVal] = useState("server-configured-admin");
   const [wizardPassVal, setWizardPassVal] = useState("••••••••••••");
   const [wizardStatus, setWizardStatus] = useState<"idle" | "connecting" | "capturing" | "success" | "done">("idle");
   const [wizardLogs, setWizardLogs] = useState<string[]>([
@@ -392,9 +392,9 @@ export default function App() {
       url: "https://myk-online.com/auth/login",
       service: "MYK.IO Production Cloud Node",
       directions: "Grant safe proxy access to your online admin commands & synchronize the repository live specs.",
-      defaultUser: "wired4365",
-      defaultPass: "74Slimjim!",
-      successLog: "Handshake verified with myk-online.com. Admin JWT successfully persisted in background session storage.",
+      defaultUser: "server-configured-admin",
+      defaultPass: "server-managed-secret",
+      successLog: "Handshake verified with myk-online.com. Admin session successfully persisted in an HttpOnly cookie.",
       connectorName: "Continuous Web Agent Engine"
     },
     2: {
@@ -402,7 +402,7 @@ export default function App() {
       url: "https://accounts.google.com/o/oauth2/auth?scope=docs,calendar",
       service: "Google Cloud Platform Consent Hub",
       directions: "Permit the agent to automatically extract your Google Calendar and dump formatted project timelines directly into Google Docs.",
-      defaultUser: "mike@myk.ac",
+      defaultUser: "workspace-admin@example.com",
       defaultPass: "••••••••••••••••",
       successLog: "OAuth2 client scopes approved. Exchanged authentication code for secure long-lived refresh token.",
       connectorName: "Google Workspace direct connector"
@@ -412,7 +412,7 @@ export default function App() {
       url: "https://github.com/login/oauth/authorize?client_id=myk_git",
       service: "GitHub OAuth Application Service",
       directions: "Authorizes write access to trigger auto-commits & save spec JSON directly to your codebase repository.",
-      defaultUser: "wired4365",
+      defaultUser: "server-configured-admin",
       defaultPass: "••••••••••••••••",
       successLog: "Webhook trigger registered. Generated write deploy keys and synchronized origin main branch.",
       connectorName: "GitHub Commit Synced Interface"
@@ -422,43 +422,78 @@ export default function App() {
       url: "https://console.anthropic.com/settings/keys",
       service: "Anthropic AI Developer Settings Console",
       directions: "Allows Claude 3.5 Sonnet to serve as a deep compiler fallback. Auto-extracts prompt authorization keys.",
-      defaultUser: "wired4365@myk-online.com",
-      defaultPass: "sk-ant-v1-mykonline-a903028fb3c2b810d",
-      successLog: "Injected alternative key provider sk-ant-...b10d into system memory state successfully.",
+      defaultUser: "server-configured-admin",
+      defaultPass: "provider-managed-secret",
+      successLog: "Registered alternative provider key reference in server-managed secret storage successfully.",
       connectorName: "Claude Core Context Proxy Agent"
     }
   };
   
   // Backend API connection check
-  const [backendStatus, setBackendStatus] = useState<{ hasApiKey: boolean; checked: boolean }>({
+  const [backendStatus, setBackendStatus] = useState<{
+    hasApiKey: boolean;
+    authConfigured: boolean;
+    authenticated: boolean;
+    checked: boolean;
+  }>({
     hasApiKey: false,
+    authConfigured: false,
+    authenticated: false,
     checked: false,
   });
 
   const [copySuccess, setCopySuccess] = useState(false);
 
   // Admin Login authentication states & utilities
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem("myk_io_is_logged_in") === "true";
-  });
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loginUsername === "wired4365" && loginPassword === "74Slimjim!") {
+    setIsLoggingIn(true);
+    setLoginError(null);
+
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          username: loginUsername,
+          password: loginPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Unable to authenticate administrator session.");
+      }
+
       setIsLoggedIn(true);
-      setLoginError(null);
-      localStorage.setItem("myk_io_is_logged_in", "true");
-    } else {
-      setLoginError("Invalid Administrator credentials. Please verify username and password.");
+      setBackendStatus((prev) => ({
+        ...prev,
+        authenticated: true,
+        authConfigured: true,
+        checked: true,
+      }));
+    } catch (err: any) {
+      setLoginError(err.message || "Invalid administrator credentials.");
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  const handleAdminLogout = () => {
+  const handleAdminLogout = async () => {
+    await fetch("/api/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => undefined);
     setIsLoggedIn(false);
-    localStorage.removeItem("myk_io_is_logged_in");
+    setBackendStatus((prev) => ({ ...prev, authenticated: false }));
     setLoginUsername("");
     setLoginPassword("");
   };
@@ -530,7 +565,7 @@ export default function App() {
     const parts = input.split(" ");
     const cmd = parts[0].toLowerCase();
     
-    let responseLogs: string[] = [`wired4365@myk-online:~$ ${input}`];
+    let responseLogs: string[] = [`admin@myk-online:~$ ${input}`];
 
     if (cmd === "help") {
       responseLogs.push(
@@ -556,7 +591,7 @@ export default function App() {
     } else if (cmd === "status") {
       responseLogs.push(
         "--- MYK.IO STATUS DIAGNOSTIC PANEL ---",
-        `User session: mike@myk.ac (Role: Administrator wired4365)`,
+        `User session: server-authenticated administrator`,
         `Target deployment domain: https://myk-online.com/`,
         `Active Storage Scope: ${storageStrategy === "cloud" ? "CLOUD SYNCED (TLS Enabled)" : "LOCAL HARDWARE CACHE"}`,
         `API Backend Status: ${backendStatus.hasApiKey ? "Gemini Key Configured" : "Placeholder Keys Active"}`,
@@ -814,20 +849,28 @@ export default function App() {
     }
     
     // Check API credentials status
-    fetch("/api/status")
+    fetch("/api/status", { credentials: "include" })
       .then((res) => res.json())
       .then((data) => {
         setBackendStatus({
           hasApiKey: data.hasApiKey,
+          authConfigured: data.authConfigured,
+          authenticated: data.authenticated,
           checked: true,
         });
+        setIsLoggedIn(Boolean(data.authenticated));
+        setIsAuthChecking(false);
       })
       .catch((err) => {
         console.error("Backend status check failed", err);
         setBackendStatus({
           hasApiKey: false,
+          authConfigured: false,
+          authenticated: false,
           checked: true,
         });
+        setIsLoggedIn(false);
+        setIsAuthChecking(false);
       });
   }, []);
 
@@ -891,6 +934,7 @@ export default function App() {
       const response = await fetch("/api/analyze-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           prompt: promptInput,
           domain: selectedDomain,
@@ -926,6 +970,7 @@ export default function App() {
       const response = await fetch("/api/refine-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           prompt: promptInput,
           tier: tierRecord.tier,
@@ -1218,7 +1263,7 @@ export default function App() {
       doc.setFontSize(7.5);
       doc.setFont("Helvetica", "italic");
       doc.setTextColor(148, 163, 184);
-      doc.text(`Page ${pi} of ${pageCount}  •  Prepared globally for user mike@myk.ac  •  Built on aistudio`, 15, 287);
+      doc.text(`Page ${pi} of ${pageCount}  -  Prepared for authenticated administrator  -  Built on aistudio`, 15, 287);
     }
 
     const safeTitleName = activePlan.refinementResult.title
@@ -1407,6 +1452,17 @@ export default function App() {
     );
   };
 
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 font-sans antialiased flex items-center justify-center p-4">
+        <div className="bg-slate-950 border border-slate-800 rounded-3xl p-8 shadow-2xl flex items-center space-x-3">
+          <Loader2 className="h-5 w-5 text-teal-400 animate-spin" />
+          <span className="text-sm font-semibold text-slate-300">Checking administrator session...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-slate-900 text-slate-100 font-sans antialiased flex items-center justify-center p-4 selection:bg-teal-500/30 selection:text-teal-200">
@@ -1429,6 +1485,15 @@ export default function App() {
               <div className="bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs rounded-xl p-3.5 flex items-start space-x-2 animate-fadeIn" id="login-error-msg">
                 <BadgeAlert className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
                 <span className="leading-snug">{loginError}</span>
+              </div>
+            )}
+
+            {backendStatus.checked && !backendStatus.authConfigured && (
+              <div className="bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs rounded-xl p-3.5 flex items-start space-x-2 animate-fadeIn" id="login-config-msg">
+                <BadgeAlert className="h-4 w-4 text-amber-300 shrink-0 mt-0.5" />
+                <span className="leading-snug">
+                  Admin login is disabled until the server has ADMIN_USERNAME and ADMIN_PASSWORD configured.
+                </span>
               </div>
             )}
 
@@ -1466,11 +1531,12 @@ export default function App() {
 
             <button
               type="submit"
-              className="w-full py-3 px-4 bg-teal-500 hover:bg-teal-400 active:bg-teal-600 text-slate-950 rounded-xl text-sm font-bold shadow-lg shadow-teal-500/10 transition-all duration-150 flex items-center justify-center space-x-2 cursor-pointer mt-6"
+              disabled={isLoggingIn || (backendStatus.checked && !backendStatus.authConfigured)}
+              className="w-full py-3 px-4 bg-teal-500 hover:bg-teal-400 active:bg-teal-600 disabled:bg-slate-700 disabled:text-slate-400 text-slate-950 rounded-xl text-sm font-bold shadow-lg shadow-teal-500/10 transition-all duration-150 flex items-center justify-center space-x-2 cursor-pointer disabled:cursor-not-allowed mt-6"
               id="btn-login-submit"
             >
-              <Lock className="h-4 w-4" />
-              <span>Validate Credentials</span>
+              {isLoggingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+              <span>{isLoggingIn ? "Validating..." : "Validate Credentials"}</span>
             </button>
           </form>
 
@@ -1595,7 +1661,7 @@ export default function App() {
               </div>
               <div className="text-left">
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Admin Role</p>
-                <p className="text-xs font-semibold text-white">wired4365</p>
+                <p className="text-xs font-semibold text-white">Administrator</p>
               </div>
             </div>
             
@@ -1658,7 +1724,7 @@ export default function App() {
           <div className="flex items-center space-x-3">
             <span className="text-xs text-slate-500">Target User:</span>
             <span className="font-mono text-xs bg-slate-100 text-slate-800 px-3 py-1 rounded-full border border-slate-200">
-              mike@myk.ac
+              Authenticated Admin
             </span>
           </div>
         </header>
@@ -2504,7 +2570,7 @@ export default function App() {
               <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 p-3 rounded-xl flex items-center justify-between text-xs animate-fadeIn" id="sync-success-alert">
                 <div className="flex items-center space-x-2">
                   <Unlock className="h-3.5 w-3.5 text-emerald-600 animate-bounce" />
-                  <span>Synchronization Complete: Active memory pipeline synchronized with cloud db for administrator <strong>wired4365</strong>.</span>
+                  <span>Synchronization Complete: Active memory pipeline synchronized for the authenticated administrator.</span>
                 </div>
                 <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded font-bold font-mono">OK</span>
               </div>
@@ -2780,7 +2846,7 @@ export default function App() {
                           ? "text-amber-400"
                           : line.includes("error") || line.includes("not found")
                           ? "text-rose-400"
-                          : line.startsWith("wired4365")
+                          : line.startsWith("admin@")
                           ? "text-teal-400 font-bold"
                           : "text-slate-400"
                       }`}
@@ -2794,7 +2860,7 @@ export default function App() {
               {/* CLI Command Line input */}
               <form onSubmit={handleExecuteTerminalCommand} className="pt-2 border-t border-slate-900">
                 <div className="flex items-center space-x-2 font-mono text-xs">
-                  <span className="text-teal-400 font-bold select-none shrink-0">wired4365@myk-online:~$</span>
+                  <span className="text-teal-400 font-bold select-none shrink-0">admin@myk-online:~$</span>
                   <input
                     type="text"
                     value={terminalCommand}
