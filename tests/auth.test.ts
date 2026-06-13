@@ -84,10 +84,16 @@ test("server-issued admin session protects paid AI endpoints", async (t) => {
   assert.match(sessionCookie || "", /SameSite=Lax/);
 
   const authenticatedStatus = await fetch(`${BASE_URL}/api/status`, {
-    headers: { Cookie: sessionCookie || "" },
+    headers: { Cookie: `bad=%; ${sessionCookie || ""}` },
   });
   assert.equal(authenticatedStatus.status, 200);
   assert.equal((await authenticatedStatus.json()).authenticated, true);
+
+  const malformedSessionStatus = await fetch(`${BASE_URL}/api/status`, {
+    headers: { Cookie: "myk_io_session=%" },
+  });
+  assert.equal(malformedSessionStatus.status, 200);
+  assert.equal((await malformedSessionStatus.json()).authenticated, false);
 
   const logout = await fetch(`${BASE_URL}/api/logout`, {
     method: "POST",
