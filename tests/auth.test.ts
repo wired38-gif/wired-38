@@ -56,6 +56,22 @@ test("server-issued admin session protects paid AI endpoints", async (t) => {
 
   await waitForServer(server);
 
+  const malformedCookieStatus = await fetch(`${BASE_URL}/api/status`, {
+    headers: { Cookie: "unrelated=%" },
+  });
+  assert.equal(malformedCookieStatus.status, 200);
+  assert.equal((await malformedCookieStatus.json()).authenticated, false);
+
+  const malformedCookieApiResponse = await fetch(`${BASE_URL}/api/analyze-prompt`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: "unrelated=%",
+    },
+    body: JSON.stringify({ prompt: "Generate a build plan" }),
+  });
+  assert.equal(malformedCookieApiResponse.status, 401);
+
   const unauthenticatedApiResponse = await fetch(`${BASE_URL}/api/analyze-prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
