@@ -66,7 +66,11 @@ function parseCookies(cookieHeader: string | undefined) {
   for (const cookie of cookieHeader.split(";")) {
     const [name, ...valueParts] = cookie.trim().split("=");
     if (!name || valueParts.length === 0) continue;
-    cookies[name] = decodeURIComponent(valueParts.join("="));
+    try {
+      cookies[name] = decodeURIComponent(valueParts.join("="));
+    } catch {
+      // Ignore malformed cookie values instead of failing the whole request.
+    }
   }
 
   return cookies;
