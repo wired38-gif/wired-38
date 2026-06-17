@@ -17,6 +17,7 @@ app.set("trust proxy", 1);
 type SessionPayload = {
   sub: string;
   exp: number;
+  credentialVersion: string;
 };
 
 function getAdminCredentials() {
@@ -50,10 +51,21 @@ function signPayload(encodedPayload: string) {
     .digest("base64url");
 }
 
+function getCredentialVersion() {
+  const credentials = getAdminCredentials();
+  if (!credentials.username || !credentials.password || !getAuthSecret()) return "";
+
+  return crypto
+    .createHmac("sha256", getAuthSecret())
+    .update(`${credentials.username}\0${credentials.password}`)
+    .digest("base64url");
+}
+
 function createSessionToken(username: string) {
   const payload: SessionPayload = {
     sub: username,
     exp: Date.now() + SESSION_TTL_SECONDS * 1000,
+    credentialVersion: getCredentialVersion(),
   };
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${encodedPayload}.${signPayload(encodedPayload)}`;
@@ -66,7 +78,11 @@ function parseCookies(cookieHeader: string | undefined) {
   for (const cookie of cookieHeader.split(";")) {
     const [name, ...valueParts] = cookie.trim().split("=");
     if (!name || valueParts.length === 0) continue;
-    cookies[name] = decodeURIComponent(valueParts.join("="));
+    try {
+      cookies[name] = decodeURIComponent(valueParts.join("="));
+    } catch {
+      // Ignore malformed cookies from older client code or unrelated app paths.
+    }
   }
 
   return cookies;
@@ -83,7 +99,16 @@ function verifySessionToken(token: string | undefined) {
 
   try {
     const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as SessionPayload;
-    return typeof payload.sub === "string" && typeof payload.exp === "number" && payload.exp > Date.now();
+    const credentials = getAdminCredentials();
+    return (
+      typeof payload.sub === "string" &&
+      typeof credentials.username === "string" &&
+      constantTimeEqual(payload.sub, credentials.username) &&
+      typeof payload.exp === "number" &&
+      payload.exp > Date.now() &&
+      typeof payload.credentialVersion === "string" &&
+      constantTimeEqual(payload.credentialVersion, getCredentialVersion())
+    );
   } catch {
     return false;
   }
