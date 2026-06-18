@@ -63,6 +63,22 @@ test("server-issued admin session protects paid AI endpoints", async (t) => {
   });
   assert.equal(unauthenticatedApiResponse.status, 401);
 
+  const malformedCookieStatus = await fetch(`${BASE_URL}/api/status`, {
+    headers: { Cookie: "unrelated=%E0%A4%A" },
+  });
+  assert.equal(malformedCookieStatus.status, 200);
+  assert.equal((await malformedCookieStatus.json()).authenticated, false);
+
+  const malformedCookieApiResponse = await fetch(`${BASE_URL}/api/analyze-prompt`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: "unrelated=%E0%A4%A",
+    },
+    body: JSON.stringify({ prompt: "Generate a build plan" }),
+  });
+  assert.equal(malformedCookieApiResponse.status, 401);
+
   const failedLogin = await fetch(`${BASE_URL}/api/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -88,6 +104,12 @@ test("server-issued admin session protects paid AI endpoints", async (t) => {
   });
   assert.equal(authenticatedStatus.status, 200);
   assert.equal((await authenticatedStatus.json()).authenticated, true);
+
+  const authenticatedStatusWithMalformedCookie = await fetch(`${BASE_URL}/api/status`, {
+    headers: { Cookie: `${sessionCookie || ""}; unrelated=%E0%A4%A` },
+  });
+  assert.equal(authenticatedStatusWithMalformedCookie.status, 200);
+  assert.equal((await authenticatedStatusWithMalformedCookie.json()).authenticated, true);
 
   const logout = await fetch(`${BASE_URL}/api/logout`, {
     method: "POST",
