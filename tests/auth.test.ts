@@ -63,6 +63,22 @@ test("server-issued admin session protects paid AI endpoints", async (t) => {
   });
   assert.equal(unauthenticatedApiResponse.status, 401);
 
+  const malformedCookieStatus = await fetch(`${BASE_URL}/api/status`, {
+    headers: { Cookie: "myk_io_session=%" },
+  });
+  assert.equal(malformedCookieStatus.status, 200);
+  assert.equal((await malformedCookieStatus.json()).authenticated, false);
+
+  const malformedCookieApiResponse = await fetch(`${BASE_URL}/api/analyze-prompt`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: "myk_io_session=%",
+    },
+    body: JSON.stringify({ prompt: "Generate a build plan" }),
+  });
+  assert.equal(malformedCookieApiResponse.status, 401);
+
   const failedLogin = await fetch(`${BASE_URL}/api/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
