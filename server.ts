@@ -3,7 +3,10 @@ import path from "path";
 import crypto from "crypto";
 import type { NextFunction, Request, Response } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
+import { config as loadEnv } from "dotenv";
 import { createServer as createViteServer } from "vite";
+
+loadEnv({ path: [".env.local", ".env"] });
 
 // Global express setup
 const app = express();
@@ -33,6 +36,10 @@ function getAuthSecret() {
 function isAuthConfigured() {
   const credentials = getAdminCredentials();
   return Boolean(credentials.username && credentials.password && getAuthSecret());
+}
+
+function isCursorApiConfigured() {
+  return Boolean(process.env.CURSOR_API_KEY || process.env.CURSOR_API_TOKEN);
 }
 
 function hashValue(value: string) {
@@ -147,6 +154,7 @@ app.get("/api/status", (req, res) => {
   res.json({
     status: "ok",
     hasApiKey: hasKey,
+    hasCursorApiKey: isCursorApiConfigured(),
     authConfigured: isAuthConfigured(),
     authenticated: isAuthenticated(req),
     timestamp: new Date().toISOString(),
