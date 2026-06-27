@@ -432,11 +432,13 @@ export default function App() {
   // Backend API connection check
   const [backendStatus, setBackendStatus] = useState<{
     hasApiKey: boolean;
+    hasCursorApiKey: boolean;
     authConfigured: boolean;
     authenticated: boolean;
     checked: boolean;
   }>({
     hasApiKey: false,
+    hasCursorApiKey: false,
     authConfigured: false,
     authenticated: false,
     checked: false,
@@ -595,6 +597,7 @@ export default function App() {
         `Target deployment domain: https://myk-online.com/`,
         `Active Storage Scope: ${storageStrategy === "cloud" ? "CLOUD SYNCED (TLS Enabled)" : "LOCAL HARDWARE CACHE"}`,
         `API Backend Status: ${backendStatus.hasApiKey ? "Gemini Key Configured" : "Placeholder Keys Active"}`,
+        `Cursor API Status: ${backendStatus.hasCursorApiKey ? "Cursor API Key Configured" : "Cursor API Key Missing"}`,
         `Active Multi-LLM Engine: ${selectedLlm}`
       );
     } else if (cmd === "agents") {
@@ -854,6 +857,7 @@ export default function App() {
       .then((data) => {
         setBackendStatus({
           hasApiKey: data.hasApiKey,
+          hasCursorApiKey: Boolean(data.hasCursorApiKey),
           authConfigured: data.authConfigured,
           authenticated: data.authenticated,
           checked: true,
@@ -865,6 +869,7 @@ export default function App() {
         console.error("Backend status check failed", err);
         setBackendStatus({
           hasApiKey: false,
+          hasCursorApiKey: false,
           authConfigured: false,
           authenticated: false,
           checked: true,
@@ -1697,6 +1702,29 @@ export default function App() {
             {!backendStatus.hasApiKey && backendStatus.checked && (
               <p className="text-[10px] text-slate-500 leading-normal">
                 Please add the <code className="text-teal-400">GEMINI_API_KEY</code> setup inside the Secrets panel of your workspace for core real-time evaluations.
+              </p>
+            )}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
+              <span className="text-slate-400">Cursor Cloud API</span>
+              {backendStatus.checked ? (
+                backendStatus.hasCursorApiKey ? (
+                  <span className="text-emerald-400 font-semibold flex items-center space-x-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                    <span>Ready</span>
+                  </span>
+                ) : (
+                  <span className="text-amber-400 font-semibold flex items-center space-x-1">
+                    <BadgeAlert className="h-3.5 w-3.5 text-amber-400" />
+                    <span>Key Required</span>
+                  </span>
+                )
+              ) : (
+                <span className="text-slate-500">Checking...</span>
+              )}
+            </div>
+            {!backendStatus.hasCursorApiKey && backendStatus.checked && (
+              <p className="text-[10px] text-slate-500 leading-normal">
+                Add <code className="text-teal-400">CURSOR_API_KEY</code> to <code className="text-teal-400">.env.local</code> for Cursor Cloud API access.
               </p>
             )}
             <div className="pt-1.5 flex items-center text-[10px] text-zinc-500 font-mono">

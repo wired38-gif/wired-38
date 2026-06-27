@@ -44,6 +44,7 @@ test("server-issued admin session protects paid AI endpoints", async (t) => {
       ADMIN_PASSWORD: "correct-password",
       AUTH_SECRET: "test-only-auth-secret",
       GEMINI_API_KEY: "fake-gemini-key",
+      CURSOR_API_KEY: "fake-cursor-key",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -87,7 +88,9 @@ test("server-issued admin session protects paid AI endpoints", async (t) => {
     headers: { Cookie: sessionCookie || "" },
   });
   assert.equal(authenticatedStatus.status, 200);
-  assert.equal((await authenticatedStatus.json()).authenticated, true);
+  const statusBody = await authenticatedStatus.json();
+  assert.equal(statusBody.authenticated, true);
+  assert.equal(statusBody.hasCursorApiKey, true);
 
   const logout = await fetch(`${BASE_URL}/api/logout`, {
     method: "POST",
