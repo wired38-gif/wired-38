@@ -1,0 +1,117 @@
+import { QuickReferenceItem, GlossaryTerm } from "../entrataTypes";
+
+export const QUICK_REFERENCE: QuickReferenceItem[] = [
+  { id: "qr-1", title: "View All Residents", path: ["Entrata", "Residents", "Residents"], role: ["Leasing", "Manager", "All"] },
+  { id: "qr-2", title: "View All Prospects", path: ["Entrata", "Residents", "Prospects"], role: ["Leasing", "All"] },
+  { id: "qr-3", title: "Add New Prospect", path: ["Entrata", "Residents", "Prospects", "+ Add Prospect"], role: ["Leasing", "All"] },
+  { id: "qr-4", title: "View All Work Orders", path: ["Entrata", "Services", "Maintenance", "Work Orders"], role: ["Maintenance", "Manager", "All"] },
+  { id: "qr-5", title: "Add Work Order", path: ["Entrata", "Services", "Maintenance", "Work Orders", "+ Add Work Order"], role: ["Maintenance", "Leasing", "Manager", "All"] },
+  { id: "qr-6", title: "Daily Operations Report", path: ["Entrata", "Reports", "Property Management", "Daily Operations Report"], role: ["Manager", "All"] },
+  { id: "qr-7", title: "Delinquency Report", path: ["Entrata", "Reports", "Financial", "Delinquency Report"], role: ["Manager", "All"] },
+  { id: "qr-8", title: "Lease Expiration Report", path: ["Entrata", "Reports", "Property Management", "Lease Expiration"], role: ["Manager", "Leasing", "All"] },
+  { id: "qr-9", title: "Post Charge to Ledger", path: ["Resident Profile", "Ledger Tab", "Post Charge"], role: ["Leasing", "Manager", "All"] },
+  { id: "qr-10", title: "Accept Payment", path: ["Resident Profile", "Ledger Tab", "Accept Payment"], role: ["Leasing", "Manager", "All"] },
+  { id: "qr-11", title: "Generate SODA", path: ["Resident Profile", "Documents", "Generate SODA"], role: ["Manager", "All"] },
+  { id: "qr-12", title: "Create Inspection", path: ["Entrata", "Services", "Inspections", "+ Add Inspection"], role: ["Maintenance", "Manager", "All"] },
+  { id: "qr-13", title: "Send Portal Invite", path: ["Resident Profile", "Portal", "Send Invite"], role: ["Leasing", "All"] },
+  { id: "qr-14", title: "Notice to Vacate", path: ["Resident Profile", "Actions", "Notice to Vacate"], role: ["Leasing", "Manager", "All"] },
+  { id: "qr-15", title: "Create Renewal Offer", path: ["Resident Profile", "Renewals", "Create Renewal Offer"], role: ["Leasing", "Manager", "All"] },
+  { id: "qr-16", title: "View Rent Roll", path: ["Entrata", "Reports", "Financial", "Rent Roll"], role: ["Manager", "All"] },
+  { id: "qr-17", title: "Unit Availability (Vacants)", path: ["Entrata", "Reports", "Property Management", "Occupancy Report"], role: ["Leasing", "Manager", "All"] },
+  { id: "qr-18", title: "Move-Out a Resident", path: ["Resident Profile", "Actions", "Move Out Resident"], role: ["Manager", "All"] },
+  { id: "qr-19", title: "Process Application", path: ["Entrata", "Residents", "Applicants", "Select Applicant", "Review Application"], role: ["Leasing", "Manager", "All"] },
+  { id: "qr-20", title: "Generate Pay or Quit Notice", path: ["Resident Profile", "Notices", "Pay or Quit"], role: ["Manager", "All"] },
+];
+
+export const GLOSSARY: GlossaryTerm[] = [
+  {
+    id: "g-soda",
+    term: "SODA",
+    definition: "Security Deposit Disposition Accounting — the legal document itemizing deductions from a resident's security deposit after move-out. Must be delivered within state-mandated timeframes (typically 14–30 days).",
+    relatedTerms: ["Security Deposit", "Move-Out"],
+  },
+  {
+    id: "g-ntv",
+    term: "NTV",
+    definition: "Notice to Vacate — formal written notice from a resident indicating their intent to move out, triggering the move-out workflow and updating unit availability in the leasing calendar.",
+    relatedTerms: ["Move-Out", "Lease End"],
+  },
+  {
+    id: "g-pte",
+    term: "Permission to Enter (PTE)",
+    definition: "A resident's authorization allowing maintenance staff to enter their unit without the resident being present. Required legally before entering. Granted per work order or as a standing authorization.",
+    relatedTerms: ["Work Order", "Maintenance"],
+  },
+  {
+    id: "g-ledger",
+    term: "Ledger",
+    definition: "The financial record for a resident's account, showing all charges, payments, credits, and current balance. Each resident has a single ledger that spans their entire tenancy.",
+    relatedTerms: ["Post Charge", "Accept Payment", "Balance"],
+  },
+  {
+    id: "g-income-code",
+    term: "Income Code",
+    definition: "A property-defined code that categorizes a financial transaction (e.g., RENT01 = Monthly Rent, LATE01 = Late Fee, PET01 = Pet Fee). Critical for proper accounting and reporting.",
+    relatedTerms: ["Ledger", "Post Charge"],
+  },
+  {
+    id: "g-wo",
+    term: "Work Order (WO)",
+    definition: "A maintenance task record created in Entrata to track repair and service requests. Includes property, unit, category, priority, description, assigned tech, and status updates.",
+    relatedTerms: ["Maintenance", "Priority", "Permission to Enter"],
+  },
+  {
+    id: "g-prospect",
+    term: "Prospect",
+    definition: "A potential renter who has expressed interest in leasing a unit. In Entrata, a Prospect record is created before an application is submitted. They have not yet signed a lease.",
+    relatedTerms: ["Applicant", "Resident"],
+  },
+  {
+    id: "g-applicant",
+    term: "Applicant",
+    definition: "A person who has submitted a formal rental application and is undergoing the screening and approval process. Status changes from Prospect to Applicant when an application is submitted.",
+    relatedTerms: ["Prospect", "Screening"],
+  },
+  {
+    id: "g-physical-occ",
+    term: "Physical Occupancy",
+    definition: "The percentage of units physically occupied by residents, regardless of whether rent is being paid. Formula: Occupied Units ÷ Total Units × 100.",
+    relatedTerms: ["Economic Occupancy", "Vacancy"],
+  },
+  {
+    id: "g-economic-occ",
+    term: "Economic Occupancy",
+    definition: "The percentage of potential gross rent actually being collected. A more meaningful metric than physical occupancy — factors in delinquency and concessions. Formula: Actual Rent Collected ÷ Potential Gross Rent × 100.",
+    relatedTerms: ["Physical Occupancy", "Delinquency"],
+  },
+  {
+    id: "g-concession",
+    term: "Concession",
+    definition: "A discount or incentive offered to a resident to secure a lease, such as '1 Month Free' or reduced rent for a period. Tracked in Entrata on the lease terms and financial ledger.",
+    relatedTerms: ["Lease Terms", "Income Code"],
+  },
+  {
+    id: "g-make-ready",
+    term: "Make Ready",
+    definition: "The process of preparing a vacant unit for the next resident after move-out. Includes cleaning, repairs, painting, and inspection. Entrata tracks make-ready status in the unit availability module.",
+    relatedTerms: ["Inspection", "Work Order", "Vacancy"],
+  },
+  {
+    id: "g-delinquency",
+    term: "Delinquency",
+    definition: "When a resident has an unpaid balance past the due date. Tracked in the Delinquency Report. Triggers the collections process including late fees, demand notices, and potentially eviction.",
+    relatedTerms: ["Late Fee", "Pay or Quit", "Collections"],
+  },
+  {
+    id: "g-adverse-action",
+    term: "Adverse Action Letter",
+    definition: "A legally required document sent to denied applicants explaining the reason for denial, particularly when based on credit or background check results. Required by the Fair Credit Reporting Act (FCRA).",
+    relatedTerms: ["Application", "Screening", "Denial"],
+  },
+  {
+    id: "g-mtm",
+    term: "Month-to-Month (MTM)",
+    definition: "A lease structure with no fixed end date, renewing automatically each month. Usually carries a premium rent rate. Provides flexibility for residents but reduces occupancy predictability.",
+    relatedTerms: ["Lease Renewal", "Lease Terms"],
+  },
+];
