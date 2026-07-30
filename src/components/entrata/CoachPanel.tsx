@@ -9,6 +9,7 @@ interface CoachPanelProps {
   onNextStep: () => void;
   onPrevStep: () => void;
   onCompleteStep: () => void;
+  isSimulationMode?: boolean;
 }
 
 function BreadcrumbPath({ path }: { path: string[] }) {
@@ -58,6 +59,7 @@ export function CoachPanel({
   onNextStep,
   onPrevStep,
   onCompleteStep,
+  isSimulationMode = false,
 }: CoachPanelProps) {
   if (!workflow) {
     return (
@@ -240,7 +242,7 @@ export function CoachPanel({
               className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded-xl transition-all duration-150 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40"
             >
               <CheckCircle2 size={16} />
-              Mark Step Complete
+              {isSimulationMode ? "Click the highlighted element →" : "Mark Step Complete"}
             </button>
           ) : (
             <button

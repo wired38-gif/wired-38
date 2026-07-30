@@ -12,6 +12,7 @@ import { CoachPanel } from "./components/entrata/CoachPanel";
 import { SearchOverlay } from "./components/entrata/SearchOverlay";
 import { QuickReference } from "./components/entrata/QuickReference";
 import { MobileView } from "./components/entrata/MobileView";
+import { MockEntrataUI } from "./components/entrata/simulation/MockEntrataUI";
 
 const STORAGE_KEY = "entrata_training_progress";
 
@@ -462,15 +463,23 @@ export default function App() {
         {/* CENTER: Simulation Workspace (50%) */}
         <div className="flex-1 overflow-hidden border-x border-slate-800">
           {currentView === "workflow" ? (
-            <WorkflowSimulator
-              workflow={activeWorkflow}
-              currentStepIndex={currentStepIndex}
-              completedSteps={completedSteps}
-              onStepClick={handleStepClick}
-              onStart={handleStart}
-              onReset={handleReset}
-              mode={mode}
-            />
+            mode === "learning" && activeWorkflow && completedSteps.length < activeWorkflow.steps.length ? (
+              <MockEntrataUI
+                workflowId={activeWorkflow.id}
+                stepId={activeWorkflow.steps[currentStepIndex]?.id ?? ""}
+                onStepComplete={handleCompleteStep}
+              />
+            ) : (
+              <WorkflowSimulator
+                workflow={activeWorkflow}
+                currentStepIndex={currentStepIndex}
+                completedSteps={completedSteps}
+                onStepClick={handleStepClick}
+                onStart={handleStart}
+                onReset={handleReset}
+                mode={mode}
+              />
+            )
           ) : (
             <QuickReference
               view={currentView as "reference" | "glossary"}
@@ -488,6 +497,7 @@ export default function App() {
             onNextStep={handleNextStep}
             onPrevStep={handlePrevStep}
             onCompleteStep={handleCompleteStep}
+            isSimulationMode={mode === "learning" && activeWorkflow !== null}
           />
         </div>
       </div>
