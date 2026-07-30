@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  BookOpen, Loader2, AlertCircle, ChevronRight,
+  Loader2, AlertCircle, ChevronRight,
   Mail, Lock, User, Building2, Key, CheckCircle2, Eye, EyeOff, Copy, Check
 } from "lucide-react";
+import { ClearWorthLogo, EntrataLogo } from "../Logos";
 
 export interface AccountData {
   email: string;
@@ -194,13 +195,22 @@ export function AccountSetup({ onSuccess }: AccountSetupProps) {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-5">
-      {/* Header */}
+      {/* Header — ClearWorth + Entrata dual branding */}
       <div className="text-center mb-8">
-        <div className="w-20 h-20 bg-gradient-to-br from-[#003087] to-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-2xl shadow-indigo-900/50 border border-indigo-500/30">
-          <BookOpen size={36} className="text-white" />
+        {/* ClearWorth logo */}
+        <div className="flex justify-center mb-4">
+          <ClearWorthLogo variant="stacked" dark className="scale-150" />
         </div>
-        <h1 className="text-2xl font-black text-white mb-1">Entrata Training Hub</h1>
-        <p className="text-sm text-slate-400">Property Management Operations Training</p>
+        <div className="flex items-center justify-center gap-2 mb-1">
+          <div className="h-px w-12 bg-slate-700" />
+          <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Training Hub</span>
+          <div className="h-px w-12 bg-slate-700" />
+        </div>
+        <div className="flex items-center justify-center gap-1.5 mt-2">
+          <span className="text-xs text-slate-500">Powered by</span>
+          <EntrataLogo size="sm" white />
+        </div>
+        <p className="text-xs text-slate-500 mt-2">Conventional Multifamily · OXP & RXP Platform Training</p>
       </div>
 
       {/* Card */}

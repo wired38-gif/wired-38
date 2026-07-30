@@ -1,4 +1,53 @@
-import { EntrataWorkflow } from "../entrataTypes";
+import { EntrataWorkflow, Platform, WorkflowSuite } from "../entrataTypes";
+
+// ─── OXP / RXP Platform & Suite mapping per workflow ─────────────────────────
+// Entrata's two platforms:
+//   OXP = Operations Experience Platform  (staff-facing)
+//   RXP = Resident Experience Platform    (resident-facing)
+// Focus: Conventional Multifamily only
+export const WORKFLOW_PLATFORM_MAP: Record<string, { platform: Platform; suite: WorkflowSuite }> = {
+  // OXP — CRM & Leasing Suite
+  "create-prospect":      { platform: "OXP", suite: "CRM & Leasing" },
+  "process-application":  { platform: "OXP", suite: "CRM & Leasing" },
+  "move-in":              { platform: "OXP", suite: "CRM & Leasing" },
+  "lease-renewal":        { platform: "OXP", suite: "CRM & Leasing" },
+
+  // OXP — Property Management Suite
+  "notice-to-vacate":     { platform: "OXP", suite: "Property Management" },
+  "move-out":             { platform: "OXP", suite: "Property Management" },
+
+  // OXP — Maintenance Suite
+  "create-work-order":    { platform: "OXP", suite: "Maintenance" },
+  "emergency-work-order": { platform: "OXP", suite: "Maintenance" },
+  "unit-inspection":      { platform: "OXP", suite: "Maintenance" },
+
+  // OXP — Financial Suite
+  "post-manual-fee":      { platform: "OXP", suite: "Financial" },
+  "accept-payment":       { platform: "OXP", suite: "Financial" },
+  "delinquency":          { platform: "OXP", suite: "Financial" },
+
+  // OXP — Reporting Suite
+  "daily-operations-report": { platform: "OXP", suite: "Reporting" },
+  "occupancy-report":        { platform: "OXP", suite: "Reporting" },
+
+  // RXP — Resident Portal Suite
+  "resident-portal-setup":   { platform: "RXP", suite: "Resident Portal" },
+};
+
+// OXP Suite display config
+export const OXP_SUITES: Array<{ suite: WorkflowSuite; color: string; bgColor: string; dotColor: string }> = [
+  { suite: "CRM & Leasing",       color: "text-blue-400",   bgColor: "bg-blue-500/10",   dotColor: "bg-blue-400" },
+  { suite: "Property Management", color: "text-amber-400",  bgColor: "bg-amber-500/10",  dotColor: "bg-amber-400" },
+  { suite: "Maintenance",         color: "text-emerald-400",bgColor: "bg-emerald-500/10",dotColor: "bg-emerald-400" },
+  { suite: "Financial",           color: "text-rose-400",   bgColor: "bg-rose-500/10",   dotColor: "bg-rose-400" },
+  { suite: "Reporting",           color: "text-violet-400", bgColor: "bg-violet-500/10", dotColor: "bg-violet-400" },
+];
+
+export const RXP_SUITES: Array<{ suite: WorkflowSuite; color: string; bgColor: string; dotColor: string }> = [
+  { suite: "Resident Portal",     color: "text-cyan-400",   bgColor: "bg-cyan-500/10",   dotColor: "bg-cyan-400" },
+  { suite: "Communications",      color: "text-teal-400",   bgColor: "bg-teal-500/10",   dotColor: "bg-teal-400" },
+  { suite: "Resident Services",   color: "text-indigo-400", bgColor: "bg-indigo-500/10", dotColor: "bg-indigo-400" },
+];
 
 export const ENTRATA_WORKFLOWS: EntrataWorkflow[] = [
   // ─────────────────────────────────────────

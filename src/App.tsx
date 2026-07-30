@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Search, BookOpen, Menu, X, ChevronDown, ToggleLeft, ToggleRight,
+  Search, Menu, X, ChevronDown, ToggleLeft, ToggleRight,
   Home, Wrench, DollarSign, BarChart2, Users, Star, Bell, HelpCircle,
-  ChevronRight, ChevronUp, CheckCircle2, AlertTriangle, Lightbulb
+  ChevronRight, ChevronUp, CheckCircle2, AlertTriangle, Lightbulb, BookOpen
 } from "lucide-react";
+import { ClearWorthLogo, EntrataLogo } from "./components/Logos";
 
 import { ENTRATA_WORKFLOWS, ROLES } from "./data/workflows";
 import { EntrataWorkflow, RoleType, WorkflowProgress, AppMode } from "./entrataTypes";
@@ -218,13 +219,11 @@ function MobileHeader({ onSearchOpen, onMenuOpen, mode, onModeToggle, selectedRo
       </button>
 
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
-          <BookOpen size={14} className="text-white" />
+        <ClearWorthLogo variant="mark" className="w-8 h-6 flex-shrink-0" />
+        <div className="flex items-center gap-1 min-w-0">
+          <EntrataLogo size="sm" white />
+          <span className="text-[9px] text-slate-500 font-semibold uppercase hidden sm:block">Training</span>
         </div>
-        <span className="text-sm font-bold text-white truncate">Entrata Training</span>
-        <span className={`text-[10px] font-semibold ${roleColor} truncate`}>
-          · {selectedRole === "All" ? "All Roles" : selectedRole}
-        </span>
       </div>
 
       {/* Mode Toggle */}
@@ -304,14 +303,13 @@ function DesktopHeader({ onSearchOpen, mode, onModeToggle, selectedRole, trainee
 
   return (
     <header className="flex-shrink-0 h-14 bg-slate-950 border-b border-slate-800 flex items-center px-4 gap-4 z-20">
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 w-64 flex-shrink-0">
-        <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-          <BookOpen size={15} className="text-white" />
-        </div>
-        <div>
-          <div className="text-[13px] font-extrabold text-white leading-tight">Entrata Training Hub</div>
-          <div className="text-[10px] text-slate-500 leading-tight">Property Management Operations</div>
+      {/* Logo — ClearWorth + Entrata */}
+      <div className="flex items-center gap-3 w-64 flex-shrink-0">
+        <ClearWorthLogo dark className="scale-90 origin-left" />
+        <div className="h-5 w-px bg-slate-700" />
+        <div className="flex items-center gap-1">
+          <EntrataLogo size="sm" white />
+          <span className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mt-0.5">Training</span>
         </div>
       </div>
 

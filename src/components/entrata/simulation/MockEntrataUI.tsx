@@ -120,7 +120,7 @@ function EntrataNav({ activeTargetId, hint, onTargetClick }: SimProps) {
     <div className="bg-[#003087] select-none" onClick={() => setOpenMenu(null)}>
       <div className="flex items-center h-11 px-3 gap-1">
         <div className="flex items-center gap-2 mr-3">
-          <div className="text-white font-black text-base tracking-tight">entrata</div>
+          <span className="font-black text-base tracking-tight" style={{ color: "#E31837", letterSpacing: "-0.03em" }}>entrata</span>
           <div className="h-4 w-px bg-white/20" />
           <div className="flex items-center gap-1 text-white/70 text-[11px]">
             <Building2 size={11} />

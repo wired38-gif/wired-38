@@ -1,10 +1,12 @@
 import React from "react";
 import {
   Home, FileText, Wrench, DollarSign, BarChart2,
-  Users, ChevronRight, Star, BookOpen, Youtube
+  Users, ChevronRight, Star, BookOpen, Youtube,
+  Building2, Layers
 } from "lucide-react";
-import { EntrataWorkflow, RoleType, WorkflowProgress } from "../../entrataTypes";
-import { ROLES } from "../../data/workflows";
+import { EntrataWorkflow, RoleType, WorkflowProgress, WorkflowSuite } from "../../entrataTypes";
+import { ROLES, WORKFLOW_PLATFORM_MAP, OXP_SUITES, RXP_SUITES } from "../../data/workflows";
+import { ClearWorthLogo } from "../Logos";
 
 interface SidebarProps {
   workflows: EntrataWorkflow[];
@@ -17,23 +19,49 @@ interface SidebarProps {
   progress: Record<string, WorkflowProgress>;
 }
 
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  "Leasing": <Users size={14} />,
-  "Move-In/Move-Out": <Home size={14} />,
-  "Maintenance": <Wrench size={14} />,
-  "Financial": <DollarSign size={14} />,
-  "Reports": <BarChart2 size={14} />,
-  "Resident Services": <Star size={14} />,
-};
+function WorkflowItem({ wf, activeWorkflowId, currentView, progress, onWorkflowSelect }: {
+  wf: EntrataWorkflow;
+  activeWorkflowId: string | null;
+  currentView: string;
+  progress: Record<string, WorkflowProgress>;
+  onWorkflowSelect: (id: string) => void;
+}) {
+  const pct = getCompletionPercent(wf.id, wf.steps.length, progress);
+  const isActive = activeWorkflowId === wf.id && currentView === "workflow";
+  const isDone = progress[wf.id]?.completedAt;
 
-const CATEGORY_COLORS: Record<string, string> = {
-  "Leasing": "text-blue-400",
-  "Move-In/Move-Out": "text-amber-400",
-  "Maintenance": "text-emerald-400",
-  "Financial": "text-rose-400",
-  "Reports": "text-violet-400",
-  "Resident Services": "text-cyan-400",
-};
+  return (
+    <button
+      onClick={() => onWorkflowSelect(wf.id)}
+      className={`w-full text-left rounded-md px-2.5 py-1.5 transition-all duration-150 group relative ${
+        isActive
+          ? "bg-indigo-600/20 border border-indigo-500/40"
+          : "border border-transparent hover:bg-slate-800 hover:border-slate-700"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <div className={`flex-shrink-0 w-3 h-3 rounded-full border flex items-center justify-center ${
+          isDone ? "bg-emerald-500 border-emerald-500"
+          : pct > 0 ? "border-amber-500 bg-amber-500/10"
+          : "border-slate-600"
+        }`}>
+          {isDone && <svg width="7" height="7" viewBox="0 0 7 7" fill="none"><path d="M1 3.5L2.8 5L6 2" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className={`text-[11px] font-medium leading-tight truncate ${
+            isActive ? "text-indigo-300" : isDone ? "text-emerald-400" : "text-slate-300 group-hover:text-white"
+          }`}>{wf.shortName}</div>
+          {pct > 0 && !isDone && (
+            <div className="mt-0.5 w-full bg-slate-700 rounded-full h-0.5">
+              <div className="bg-amber-500 h-0.5 rounded-full" style={{ width: `${pct}%` }} />
+            </div>
+          )}
+        </div>
+        <ChevronRight size={9} className={`flex-shrink-0 ${isActive ? "text-indigo-400" : "text-slate-700 group-hover:text-slate-500"}`} />
+      </div>
+    </button>
+  );
+}
 
 function getCompletionPercent(workflowId: string, totalSteps: number, progress: Record<string, WorkflowProgress>) {
   const p = progress[workflowId];
@@ -41,14 +69,6 @@ function getCompletionPercent(workflowId: string, totalSteps: number, progress: 
   return Math.round((p.completedSteps.length / totalSteps) * 100);
 }
 
-function groupByCategory(workflows: EntrataWorkflow[]) {
-  const groups: Record<string, EntrataWorkflow[]> = {};
-  for (const wf of workflows) {
-    if (!groups[wf.category]) groups[wf.category] = [];
-    groups[wf.category].push(wf);
-  }
-  return groups;
-}
 
 export function Sidebar({
   workflows,
@@ -64,21 +84,17 @@ export function Sidebar({
     ? workflows
     : workflows.filter(w => w.role.includes(selectedRole));
 
-  const grouped = groupByCategory(filtered);
   const totalCompleted = Object.values(progress).filter(p => p.completedAt).length;
 
   return (
     <aside className="flex flex-col h-full bg-slate-900 border-r border-slate-800 overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-slate-800">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
-            <BookOpen size={15} className="text-white" />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-white leading-tight">Entrata Training</div>
-            <div className="text-[10px] text-slate-400 leading-tight">Property Management Hub</div>
-          </div>
+      <div className="p-3 border-b border-slate-800">
+        {/* ClearWorth branding */}
+        <ClearWorthLogo dark className="mb-2" />
+        <div className="flex items-center gap-1.5 mb-3">
+          <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">Training powered by</span>
+          <span className="text-[#E31837] font-black text-sm tracking-tight">entrata</span>
         </div>
 
         {/* Overall Progress */}
@@ -142,81 +158,69 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Workflow List */}
+      {/* Workflow List — OXP / RXP Platform Structure */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="p-2 space-y-1">
-          {Object.entries(grouped).map(([category, wfs]) => (
-            <div key={category}>
-              {/* Category Header */}
-              <div className={`flex items-center gap-1.5 px-2 py-1.5 ${CATEGORY_COLORS[category] || "text-slate-400"}`}>
-                {CATEGORY_ICONS[category]}
-                <span className="text-[10px] font-bold uppercase tracking-wider">{category}</span>
-                <span className="text-[9px] text-slate-600 ml-auto">{wfs.length}</span>
+
+          {/* OXP Platform */}
+          <div className="px-2 pt-2 pb-1 flex items-center gap-2">
+            <span className="text-[9px] font-black text-white bg-[#003087] px-1.5 py-0.5 rounded uppercase tracking-wider">OXP</span>
+            <span className="text-[9px] text-slate-500 font-medium">Operations</span>
+          </div>
+
+          {OXP_SUITES.map(({ suite, color, dotColor }) => {
+            const suiteWorkflows = filtered.filter(wf => {
+              const meta = WORKFLOW_PLATFORM_MAP[wf.id];
+              return meta?.platform === "OXP" && meta?.suite === suite;
+            });
+            if (suiteWorkflows.length === 0) return null;
+            return (
+              <div key={suite}>
+                <div className={`flex items-center gap-1.5 px-2 py-1 ${color}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0`} />
+                  <span className="text-[9px] font-bold uppercase tracking-wider">{suite}</span>
+                  <span className="text-[9px] text-slate-600 ml-auto">{suiteWorkflows.length}</span>
+                </div>
+                {suiteWorkflows.map(wf => <WorkflowItem key={wf.id} wf={wf} activeWorkflowId={activeWorkflowId} currentView={currentView} progress={progress} onWorkflowSelect={onWorkflowSelect} />)}
               </div>
+            );
+          })}
 
-              {/* Workflow Items */}
-              {wfs.map(wf => {
-                const pct = getCompletionPercent(wf.id, wf.steps.length, progress);
-                const isActive = activeWorkflowId === wf.id && currentView === "workflow";
-                const isDone = progress[wf.id]?.completedAt;
+          {/* RXP Platform */}
+          <div className="px-2 pt-3 pb-1 flex items-center gap-2 border-t border-slate-800 mt-1">
+            <span className="text-[9px] font-black text-white bg-[#6BBF9E] px-1.5 py-0.5 rounded uppercase tracking-wider">RXP</span>
+            <span className="text-[9px] text-slate-500 font-medium">Resident Exp.</span>
+          </div>
 
-                return (
-                  <button
-                    key={wf.id}
-                    onClick={() => onWorkflowSelect(wf.id)}
-                    className={`w-full text-left rounded-md px-2.5 py-2 transition-all duration-150 group relative ${
-                      isActive
-                        ? "bg-indigo-600/20 border border-indigo-500/40"
-                        : "border border-transparent hover:bg-slate-800 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <div className={`flex-shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                        isDone
-                          ? "bg-emerald-500 border-emerald-500"
-                          : pct > 0
-                          ? "border-amber-500 bg-amber-500/10"
-                          : "border-slate-600"
-                      }`}>
-                        {isDone && (
-                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                            <path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className={`text-[11px] font-medium leading-tight truncate ${
-                          isActive ? "text-indigo-300" : isDone ? "text-emerald-400" : "text-slate-300 group-hover:text-white"
-                        }`}>
-                          {wf.shortName}
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className={`text-[9px] font-medium ${
-                            wf.difficulty === "Beginner" ? "text-emerald-600" :
-                            wf.difficulty === "Intermediate" ? "text-amber-600" : "text-rose-600"
-                          }`}>{wf.difficulty}</span>
-                          <span className="text-[9px] text-slate-600">·</span>
-                          <span className="text-[9px] text-slate-600">{wf.estimatedTime}</span>
-                        </div>
-                        {pct > 0 && !isDone && (
-                          <div className="mt-1 w-full bg-slate-700 rounded-full h-0.5">
-                            <div
-                              className="bg-amber-500 h-0.5 rounded-full transition-all duration-300"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                      <ChevronRight
-                        size={10}
-                        className={`flex-shrink-0 mt-1 transition-transform ${isActive ? "text-indigo-400 translate-x-0.5" : "text-slate-600 group-hover:text-slate-400"}`}
-                      />
-                    </div>
-                  </button>
-                );
-              })}
+          {RXP_SUITES.map(({ suite, color, dotColor }) => {
+            const suiteWorkflows = filtered.filter(wf => {
+              const meta = WORKFLOW_PLATFORM_MAP[wf.id];
+              return meta?.platform === "RXP" && meta?.suite === suite;
+            });
+            if (suiteWorkflows.length === 0) return null;
+            return (
+              <div key={suite}>
+                <div className={`flex items-center gap-1.5 px-2 py-1 ${color}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0`} />
+                  <span className="text-[9px] font-bold uppercase tracking-wider">{suite}</span>
+                  <span className="text-[9px] text-slate-600 ml-auto">{suiteWorkflows.length}</span>
+                </div>
+                {suiteWorkflows.map(wf => <WorkflowItem key={wf.id} wf={wf} activeWorkflowId={activeWorkflowId} currentView={currentView} progress={progress} onWorkflowSelect={onWorkflowSelect} />)}
+              </div>
+            );
+          })}
+
+          {/* Unmapped fallback */}
+          {filtered.filter(wf => !WORKFLOW_PLATFORM_MAP[wf.id]).length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 px-2 py-1 text-slate-500">
+                <span className="text-[9px] font-bold uppercase tracking-wider">Other</span>
+              </div>
+              {filtered.filter(wf => !WORKFLOW_PLATFORM_MAP[wf.id]).map(wf =>
+                <WorkflowItem key={wf.id} wf={wf} activeWorkflowId={activeWorkflowId} currentView={currentView} progress={progress} onWorkflowSelect={onWorkflowSelect} />
+              )}
             </div>
-          ))}
+          )}
         </div>
       </div>
     </aside>

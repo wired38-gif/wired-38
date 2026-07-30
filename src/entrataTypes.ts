@@ -1,5 +1,24 @@
 export type RoleType = "Leasing" | "Maintenance" | "Manager" | "All";
 
+// Entrata Platform
+export type Platform = "OXP" | "RXP";
+
+// OXP Suites (Operations Experience Platform)
+export type OXPSuite =
+  | "CRM & Leasing"       // Prospect to lease
+  | "Property Management" // Daily ops, occupancy, move-in/out
+  | "Financial"           // Ledger, charges, payments, accounting
+  | "Maintenance"         // Work orders, inspections, make-ready
+  | "Reporting";          // Reports, analytics, BI
+
+// RXP Suites (Resident Experience Platform)
+export type RXPSuite =
+  | "Resident Portal"     // Portal access, online payments
+  | "Communications"      // Messaging, announcements
+  | "Resident Services";  // Rewards, insurance, packages
+
+export type WorkflowSuite = OXPSuite | RXPSuite;
+
 export type WorkflowCategory =
   | "Leasing"
   | "Move-In/Move-Out"
@@ -30,6 +49,8 @@ export interface EntrataWorkflow {
   systemPath: string[];
   role: RoleType[];
   category: WorkflowCategory;
+  platform?: Platform;
+  suite?: WorkflowSuite;
   description: string;
   estimatedTime: string;
   difficulty: "Beginner" | "Intermediate" | "Advanced";
