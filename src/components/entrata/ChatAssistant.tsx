@@ -175,10 +175,10 @@ export function ChatAssistant({ onNavigate }: ChatAssistantProps) {
 
   return (
     <>
-      {/* Floating Bubble */}
+      {/* Floating Bubble — higher on mobile to clear the coach bar */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${
+        className={`fixed bottom-24 right-4 sm:bottom-5 sm:right-5 z-40 w-12 h-12 sm:w-14 sm:h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${
           isOpen
             ? "bg-slate-700 hover:bg-slate-600 rotate-0 scale-95"
             : "bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 hover:scale-110"
@@ -201,8 +201,8 @@ export function ChatAssistant({ onNavigate }: ChatAssistantProps) {
 
       {/* Chat Panel */}
       {isOpen && (
-        <div className="fixed bottom-24 right-5 z-40 w-80 sm:w-96 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl shadow-black/50 flex flex-col overflow-hidden"
-          style={{ height: "520px", maxHeight: "calc(100vh - 120px)" }}
+        <div className="fixed bottom-40 right-3 sm:bottom-24 sm:right-5 z-40 w-[calc(100vw-24px)] sm:w-80 md:w-96 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl shadow-black/50 flex flex-col overflow-hidden"
+          style={{ height: "min(480px, calc(100dvh - 180px))" }}
         >
           {/* Header */}
           <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3 flex items-center gap-3 flex-shrink-0">

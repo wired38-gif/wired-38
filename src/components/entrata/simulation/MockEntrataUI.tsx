@@ -117,35 +117,30 @@ function EntrataNav({ activeTargetId, hint, onTargetClick }: SimProps) {
   ];
 
   return (
-    <div className="bg-[#003087] select-none" onClick={() => setOpenMenu(null)}>
-      <div className="flex items-center h-11 px-3 gap-1">
-        <div className="flex items-center gap-2 mr-3">
-          <span className="font-black text-base tracking-tight" style={{ color: "#E31837", letterSpacing: "-0.03em" }}>entrata</span>
-          <div className="h-4 w-px bg-white/20" />
-          <div className="flex items-center gap-1 text-white/70 text-[11px]">
-            <Building2 size={11} />
-            <span className="font-semibold">{PROPERTY.shortName}</span>
-          </div>
+    <div className="bg-[#003087] select-none flex-shrink-0" onClick={() => setOpenMenu(null)}>
+      <div className="flex items-center h-9 px-2 gap-0.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+        {/* Logo + property — compact */}
+        <div className="flex items-center gap-1.5 mr-1.5 flex-shrink-0">
+          <span className="font-black text-sm" style={{ color: "#E31837", letterSpacing: "-0.03em" }}>entrata</span>
+          <span className="text-white/40 text-[10px]">|</span>
+          <span className="text-white/60 text-[10px] font-semibold hidden sm:block truncate max-w-[90px]">{PROPERTY.shortName}</span>
         </div>
 
         {navItems.map(item => (
-          <div key={item.id} className="relative">
+          <div key={item.id} className="relative flex-shrink-0">
             <SimTarget targetId={item.id} activeTargetId={activeTargetId} hint={hint} onClick={onTargetClick} inline>
               <button
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[12px] font-medium text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+                className="flex items-center gap-0.5 px-2 py-1 rounded text-[11px] font-medium text-white/80 hover:bg-white/10 whitespace-nowrap"
                 onClick={e => { e.stopPropagation(); setOpenMenu(openMenu === item.id ? null : item.id); }}
               >
-                {item.label}
-                {item.children.length > 0 && <ChevronDown size={11} />}
+                {item.label} <ChevronDown size={9} />
               </button>
             </SimTarget>
             {openMenu === item.id && item.children.length > 0 && (
-              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-[160px] py-1" onClick={e => e.stopPropagation()}>
+              <div className="absolute top-full left-0 mt-0.5 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-[140px] py-1" onClick={e => e.stopPropagation()}>
                 {item.children.map(child => (
                   <SimTarget key={child.id} targetId={child.id} activeTargetId={activeTargetId} hint={hint} onClick={onTargetClick}>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
-                      {child.label}
-                    </button>
+                    <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700">{child.label}</button>
                   </SimTarget>
                 ))}
               </div>
@@ -153,15 +148,13 @@ function EntrataNav({ activeTargetId, hint, onTargetClick }: SimProps) {
           </div>
         ))}
 
-        <div className="ml-auto flex items-center gap-1.5">
-          <button className="text-white/60 hover:text-white p-1"><Bell size={15} /></button>
-          <button className="text-white/60 hover:text-white p-1"><HelpCircle size={15} /></button>
-          <div className="flex items-center gap-1.5 ml-1 bg-white/10 rounded-lg px-2 py-1">
-            <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center">
-              <User size={11} className="text-white" />
+        <div className="ml-auto flex items-center flex-shrink-0 pl-1">
+          <SimTarget targetId="nav-user" activeTargetId={activeTargetId} hint={hint} onClick={onTargetClick} inline>
+            <div className="flex items-center gap-1 bg-white/10 rounded px-1.5 py-0.5 cursor-pointer">
+              <User size={10} className="text-white/70" />
+              <span className="text-white/70 text-[10px] hidden sm:block">Tyler B.</span>
             </div>
-            <span className="text-white/80 text-[11px]">Tyler Brooks</span>
-          </div>
+          </SimTarget>
         </div>
       </div>
     </div>
@@ -203,11 +196,11 @@ function ResidentHeader({ resident, activeTargetId, hint, onTargetClick, showMen
   const forceOpen = ["action-move-in","action-move-out","action-ntv","action-notice","action-renewal"].includes(activeTargetId);
 
   return (
-    <div className="bg-white border-b border-gray-200 px-5 py-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-lg font-black text-gray-900">{resident.name}</h1>
-          <div className="flex items-center gap-3 mt-0.5 text-sm text-gray-500 flex-wrap">
+    <div className="bg-white border-b border-gray-200 px-3 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-base font-black text-gray-900 truncate">{resident.name}</h1>
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 flex-wrap">
             <span className="font-bold text-gray-700">Apt {resident.unit} — {resident.unitType}</span>
             <span>·</span><span>{resident.sqft} sq ft · ${resident.rent.toLocaleString()}/mo</span>
             <span>·</span><Badge status={resident.status} />
@@ -221,7 +214,7 @@ function ResidentHeader({ resident, activeTargetId, hint, onTargetClick, showMen
             {resident.pets !== "None" && <span className="ml-2 text-amber-600">🐾 {resident.pets}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+        <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
           <SimTarget targetId="portal-status" activeTargetId={activeTargetId} hint={hint} onClick={onTargetClick}>
             <div className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border ${resident.portalActive ? "bg-green-50 border-green-200 text-green-700" : "bg-gray-50 border-gray-200 text-gray-500"}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${resident.portalActive ? "bg-green-500" : "bg-gray-400"}`} />
@@ -291,8 +284,8 @@ function ScreenProspectsList(p: SimProps) {
         <div className="flex-1 flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm text-gray-400"><Search size={13} /> Search prospects…</div>
         <button className="flex items-center gap-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-600 bg-white"><Filter size={13} /> Filter</button>
       </div>
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm overflow-x-auto">
+        <table className="w-full text-sm min-w-[500px]">
           <TH cols={["Name", "Unit Pref.", "Phone", "Source", "Desired Move-In", "Status", ""]} />
           <tbody>
             {PROSPECTS.map((pr, i) => (

@@ -89,38 +89,31 @@ function MobileSimulationView({
   const isComplete = completedSteps.length === workflow.steps.length;
   const pct = Math.round((completedSteps.length / workflow.steps.length) * 100);
 
+  const coachBarRef = React.useRef<HTMLDivElement>(null);
+
   return (
-    <div className="flex flex-col bg-white" style={{ height: "calc(100vh - 57px)" }}>
-      {/* Workflow context strip */}
-      <div className="flex-shrink-0 bg-[#003087] px-3 py-1.5 flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-white/60 text-[10px] font-semibold uppercase tracking-wider truncate">
-            {workflow.shortName}
-          </span>
-          <span className="text-white/40 text-[10px]">·</span>
-          <span className="text-white/60 text-[10px]">
-            Step {currentStepIndex + 1}/{workflow.steps.length}
-          </span>
+    <div className="flex flex-col bg-white" style={{ height: "calc(100dvh - 57px)" }}>
+      {/* Compact workflow strip */}
+      <div className="flex-shrink-0 bg-[#003087] px-3 py-2 flex items-center gap-3">
+        <span className="text-white text-xs font-bold truncate flex-1 min-w-0">{workflow.shortName}</span>
+        <span className="text-white/50 text-[10px] flex-shrink-0">
+          {currentStepIndex + 1}/{workflow.steps.length}
+        </span>
+        <div className="w-16 bg-white/20 rounded-full h-1 flex-shrink-0">
+          <div className="bg-emerald-400 h-1 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-20 bg-white/20 rounded-full h-1">
-            <div className="bg-emerald-400 h-1 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-          </div>
-          <button onClick={onReset} className="text-white/50 hover:text-white text-[10px] font-semibold">Reset</button>
-        </div>
+        <button onClick={onReset} className="text-white/50 hover:text-white text-[10px] font-semibold flex-shrink-0">Reset</button>
       </div>
 
-      {/* Full-screen simulation */}
-      <div className="flex-1 overflow-hidden relative">
+      {/* Simulation — grows to fill space between header strip and coach bar */}
+      <div className="flex-1 overflow-hidden relative min-h-0">
         {isComplete ? (
-          <div className="h-full flex flex-col items-center justify-center bg-slate-900 text-center p-8">
-            <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mb-4 border-2 border-emerald-500/40">
-              <CheckCircle2 size={40} className="text-emerald-400" />
-            </div>
-            <h2 className="text-2xl font-black text-emerald-400 mb-2">Complete!</h2>
-            <p className="text-sm text-slate-400 mb-6">You finished all {workflow.steps.length} steps of <strong className="text-white">{workflow.taskName}</strong></p>
-            <button onClick={onReset} className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl">
-              Restart Workflow
+          <div className="h-full flex flex-col items-center justify-center bg-slate-900 text-center p-6">
+            <CheckCircle2 size={48} className="text-emerald-400 mb-3" />
+            <h2 className="text-xl font-black text-emerald-400 mb-2">Complete!</h2>
+            <p className="text-sm text-slate-400 mb-5">All {workflow.steps.length} steps done — {workflow.taskName}</p>
+            <button onClick={onReset} className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl text-sm">
+              Restart
             </button>
           </div>
         ) : (
@@ -132,62 +125,60 @@ function MobileSimulationView({
         )}
       </div>
 
-      {/* Sticky bottom coach bar */}
+      {/* Coach bar — fixed height collapsed, scrollable when expanded */}
       {!isComplete && step && (
-        <div className="flex-shrink-0 bg-slate-900 border-t border-slate-700 shadow-2xl">
-          {/* Hint strip */}
-          <div
-            className="px-4 py-3 flex items-center gap-3 cursor-pointer active:bg-slate-800 transition-colors"
+        <div ref={coachBarRef} className="flex-shrink-0 bg-slate-900 border-t border-slate-700">
+          {/* Collapsed hint row — always visible */}
+          <button
+            className="w-full px-4 py-2.5 flex items-center gap-3 active:bg-slate-800 transition-colors text-left"
             onClick={() => setShowDetail(!showDetail)}
           >
-            <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#0066cc] flex items-center justify-center text-xs font-bold text-white">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0066cc] flex items-center justify-center text-[11px] font-black text-white">
               {completedSteps.includes(step.id) ? "✓" : currentStepIndex + 1}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-bold text-white truncate">{step.action}</div>
-              <div className="text-[10px] text-indigo-400 font-semibold mt-0.5">
-                ↑ Tap the blue-highlighted element above
-              </div>
+              <div className="text-[10px] text-indigo-400">↑ Tap the highlighted element</div>
             </div>
-            <ChevronUp size={16} className={`text-slate-500 flex-shrink-0 transition-transform ${showDetail ? "rotate-180" : ""}`} />
-          </div>
+            <ChevronUp size={14} className={`text-slate-500 flex-shrink-0 transition-transform duration-200 ${showDetail ? "" : "rotate-180"}`} />
+          </button>
 
-          {/* Expandable detail */}
+          {/* Expanded detail — scrollable, max height so it doesn't push sim offscreen */}
           {showDetail && (
-            <div className="px-4 pb-4 space-y-2 border-t border-slate-800">
-              {/* Breadcrumb */}
-              <div className="flex flex-wrap items-center gap-1 pt-3">
-                {step.breadcrumb.map((seg, i) => (
-                  <React.Fragment key={i}>
-                    <code className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${
-                      i === step.breadcrumb.length - 1
-                        ? "bg-[#0066cc]/20 text-blue-300 border-blue-500/40"
-                        : "bg-slate-800 text-slate-400 border-slate-700"
-                    }`}>{seg}</code>
-                    {i < step.breadcrumb.length - 1 && <ChevronRight size={9} className="text-slate-600" />}
-                  </React.Fragment>
-                ))}
+            <div className="border-t border-slate-800 overflow-y-auto" style={{ maxHeight: "38vh" }}>
+              <div className="px-4 py-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-1">
+                  {step.breadcrumb.map((seg, i) => (
+                    <React.Fragment key={i}>
+                      <code className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${
+                        i === step.breadcrumb.length - 1
+                          ? "bg-[#0066cc]/20 text-blue-300 border-blue-500/40"
+                          : "bg-slate-800 text-slate-400 border-slate-700"
+                      }`}>{seg}</code>
+                      {i < step.breadcrumb.length - 1 && <ChevronRight size={9} className="text-slate-600" />}
+                    </React.Fragment>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">{step.description}</p>
+                {step.warning && (
+                  <div className="flex gap-2 bg-amber-500/10 border border-amber-500/25 rounded-lg p-2">
+                    <AlertTriangle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-amber-200">{step.warning}</p>
+                  </div>
+                )}
+                {step.tip && (
+                  <div className="flex gap-2 bg-indigo-500/10 border border-indigo-500/25 rounded-lg p-2">
+                    <Lightbulb size={12} className="text-indigo-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-indigo-200">{step.tip}</p>
+                  </div>
+                )}
+                <button
+                  onClick={() => { onCompleteStep(); setShowDetail(false); }}
+                  className="w-full py-2.5 bg-emerald-600 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 size={15} /> Mark Complete
+                </button>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed">{step.description}</p>
-              {step.warning && (
-                <div className="flex gap-2 bg-amber-500/10 border border-amber-500/25 rounded-lg p-2">
-                  <AlertTriangle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-amber-200 leading-relaxed">{step.warning}</p>
-                </div>
-              )}
-              {step.tip && (
-                <div className="flex gap-2 bg-indigo-500/10 border border-indigo-500/25 rounded-lg p-2">
-                  <Lightbulb size={12} className="text-indigo-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-indigo-200 leading-relaxed">{step.tip}</p>
-                </div>
-              )}
-              <button
-                onClick={() => { onCompleteStep(); setShowDetail(false); }}
-                className="w-full py-3 bg-emerald-600 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2"
-              >
-                <CheckCircle2 size={16} />
-                Mark Step Complete (if already clicked)
-              </button>
             </div>
           )}
         </div>
