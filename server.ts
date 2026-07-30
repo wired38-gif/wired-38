@@ -10,51 +10,56 @@ import fs from "fs";
 
 loadEnv({ path: [".env.local", ".env"] });
 
-// ─── PIN-based Training Access System ────────────────────────────────────────
+// ─── Self-Registration Training Auth System ───────────────────────────────────
 
-// 10 default PINs — override via ACCESS_PINS env var (comma-separated)
-const DEFAULT_PINS = ["4829", "7392", "1568", "9047", "3215", "6784", "2931", "8456", "5103", "7620"];
+const DATA_DIR = path.join(process.cwd(), "data");
+const ACCOUNTS_FILE = path.join(DATA_DIR, "accounts.json");
 
-function getAccessPins(): string[] {
-  return process.env.ACCESS_PINS ? process.env.ACCESS_PINS.split(",").map(p => p.trim()) : DEFAULT_PINS;
+// Master invite code — anyone with this code can self-register
+function getInviteCode(): string {
+  return (process.env.INVITE_CODE ?? "ENTRATA2026").toUpperCase();
 }
 
-// In-memory progress store: { pin -> { name, progress, completedWorkflows } }
-const PROGRESS_DATA_FILE = path.join(process.cwd(), "data", "training-progress.json");
-
-interface TraineeRecord {
-  pin: string;
+interface TraineeAccount {
+  id: string;
+  email: string;
   name: string;
-  joinedAt: string;
+  property: string;
+  pin: string;          // 6-digit auto-generated
+  createdAt: string;
   lastActiveAt: string;
   progress: Record<string, unknown>;
   completedWorkflows: string[];
 }
 
-type ProgressStore = Record<string, TraineeRecord>;
+type AccountStore = Record<string, TraineeAccount>; // keyed by email (lowercase)
 
-function loadProgressStore(): ProgressStore {
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function loadAccounts(): AccountStore {
   try {
-    if (!fs.existsSync(path.join(process.cwd(), "data"))) {
-      fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
-    }
-    if (fs.existsSync(PROGRESS_DATA_FILE)) {
-      return JSON.parse(fs.readFileSync(PROGRESS_DATA_FILE, "utf-8")) as ProgressStore;
+    ensureDataDir();
+    if (fs.existsSync(ACCOUNTS_FILE)) {
+      return JSON.parse(fs.readFileSync(ACCOUNTS_FILE, "utf-8")) as AccountStore;
     }
   } catch { /* ignore */ }
   return {};
 }
 
-function saveProgressStore(store: ProgressStore) {
+function saveAccounts(store: AccountStore) {
   try {
-    if (!fs.existsSync(path.join(process.cwd(), "data"))) {
-      fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
-    }
-    fs.writeFileSync(PROGRESS_DATA_FILE, JSON.stringify(store, null, 2));
+    ensureDataDir();
+    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(store, null, 2));
   } catch { /* ignore */ }
 }
 
-let progressStore: ProgressStore = loadProgressStore();
+function generatePin(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+let accounts: AccountStore = loadAccounts();
 
 // Global express setup
 const app = express();
@@ -446,101 +451,111 @@ Your output must contain:
   }
 });
 
-// ─── PIN Training Auth Endpoints ─────────────────────────────────────────────
+// ─── Self-Registration Auth Endpoints ────────────────────────────────────────
 
-// Verify PIN and register trainee
-app.post("/api/pin/verify", (req, res) => {
-  const { pin, name } = req.body as { pin: string; name?: string };
-  const pins = getAccessPins();
+// Check if email has an account
+app.post("/api/auth/check-email", (req, res) => {
+  const { email } = req.body as { email: string };
+  if (!email) return res.status(400).json({ error: "Email required" });
+  const key = email.trim().toLowerCase();
+  const account = accounts[key];
+  if (account) {
+    return res.json({ exists: true, name: account.name, property: account.property });
+  }
+  return res.json({ exists: false });
+});
 
-  if (!pin || !pins.includes(pin.trim())) {
-    return res.status(401).json({ error: "Invalid PIN. Please check with your manager." });
+// Register a new account with invite code
+app.post("/api/auth/register", (req, res) => {
+  const { inviteCode, email, name, property } = req.body as {
+    inviteCode: string; email: string; name: string; property: string;
+  };
+
+  if (!inviteCode || inviteCode.trim().toUpperCase() !== getInviteCode()) {
+    return res.status(401).json({ error: "Invalid invite code. Please check with your manager." });
+  }
+  if (!email || !name || !property) {
+    return res.status(400).json({ error: "Name, email, and property are required." });
   }
 
-  const cleanPin = pin.trim();
-  if (!progressStore[cleanPin]) {
-    progressStore[cleanPin] = {
-      pin: cleanPin,
-      name: name?.trim() || `Trainee ${cleanPin}`,
-      joinedAt: new Date().toISOString(),
-      lastActiveAt: new Date().toISOString(),
-      progress: {},
-      completedWorkflows: [],
-    };
-  } else {
-    progressStore[cleanPin].lastActiveAt = new Date().toISOString();
-    if (name?.trim()) progressStore[cleanPin].name = name.trim();
+  const key = email.trim().toLowerCase();
+  if (accounts[key]) {
+    return res.status(409).json({ error: "An account with that email already exists. Please log in instead." });
   }
-  saveProgressStore(progressStore);
+
+  const pin = generatePin();
+  accounts[key] = {
+    id: crypto.randomUUID(),
+    email: key,
+    name: name.trim(),
+    property: property.trim(),
+    pin,
+    createdAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    progress: {},
+    completedWorkflows: [],
+  };
+  saveAccounts(accounts);
+
+  return res.json({ success: true, pin, name: accounts[key].name, property: accounts[key].property });
+});
+
+// Log in with email + PIN
+app.post("/api/auth/login", (req, res) => {
+  const { email, pin } = req.body as { email: string; pin: string };
+  if (!email || !pin) return res.status(400).json({ error: "Email and PIN required" });
+
+  const key = email.trim().toLowerCase();
+  const account = accounts[key];
+
+  if (!account) return res.status(404).json({ error: "No account found for that email. Please register first." });
+  if (account.pin !== pin.trim()) return res.status(401).json({ error: "Incorrect PIN. Check your welcome email." });
+
+  account.lastActiveAt = new Date().toISOString();
+  saveAccounts(accounts);
 
   return res.json({
-    valid: true,
-    name: progressStore[cleanPin].name,
-    progress: progressStore[cleanPin].progress,
-    completedWorkflows: progressStore[cleanPin].completedWorkflows,
+    success: true,
+    name: account.name,
+    property: account.property,
+    email: account.email,
+    progress: account.progress,
+    completedWorkflows: account.completedWorkflows,
   });
 });
 
-// Get trainee progress
-app.get("/api/progress/:pin", (req, res) => {
-  const { pin } = req.params;
-  const pins = getAccessPins();
-  if (!pins.includes(pin)) return res.status(401).json({ error: "Invalid PIN" });
-
-  const record = progressStore[pin];
-  return res.json({
-    progress: record?.progress ?? {},
-    completedWorkflows: record?.completedWorkflows ?? [],
-    name: record?.name ?? null,
-  });
-});
-
-// Save trainee progress
-app.post("/api/progress/:pin", (req, res) => {
-  const { pin } = req.params;
-  const pins = getAccessPins();
-  if (!pins.includes(pin)) return res.status(401).json({ error: "Invalid PIN" });
-
-  const { progress, completedWorkflows } = req.body as {
+// Save progress (email + PIN in body for auth)
+app.post("/api/account/progress", (req, res) => {
+  const { email, pin, progress, completedWorkflows } = req.body as {
+    email: string; pin: string;
     progress: Record<string, unknown>;
     completedWorkflows: string[];
   };
-
-  if (!progressStore[pin]) {
-    progressStore[pin] = {
-      pin,
-      name: `Trainee ${pin}`,
-      joinedAt: new Date().toISOString(),
-      lastActiveAt: new Date().toISOString(),
-      progress: {},
-      completedWorkflows: [],
-    };
+  const key = email?.trim().toLowerCase();
+  const account = accounts[key];
+  if (!account || account.pin !== pin?.trim()) {
+    return res.status(401).json({ error: "Invalid credentials" });
   }
-
-  progressStore[pin].progress = progress;
-  progressStore[pin].completedWorkflows = completedWorkflows;
-  progressStore[pin].lastActiveAt = new Date().toISOString();
-  saveProgressStore(progressStore);
-
+  account.progress = progress;
+  account.completedWorkflows = completedWorkflows;
+  account.lastActiveAt = new Date().toISOString();
+  saveAccounts(accounts);
   return res.json({ saved: true });
 });
 
-// Admin: list all PINs and trainee status (requires admin auth)
+// Admin: list all registered trainees (requires admin auth)
 app.get("/api/admin/trainees", requireAuth, (req, res) => {
-  const pins = getAccessPins();
-  const trainees = pins.map((pin, i) => {
-    const record = progressStore[pin];
-    return {
-      pin,
-      slot: i + 1,
-      name: record?.name ?? "Not yet activated",
-      joinedAt: record?.joinedAt ?? null,
-      lastActiveAt: record?.lastActiveAt ?? null,
-      completedWorkflows: record?.completedWorkflows?.length ?? 0,
-      totalWorkflowsStarted: Object.keys(record?.progress ?? {}).length,
-    };
-  });
-  return res.json({ pins, trainees });
+  const list = Object.values(accounts).map(a => ({
+    name: a.name,
+    email: a.email,
+    property: a.property,
+    pin: a.pin,
+    createdAt: a.createdAt,
+    lastActiveAt: a.lastActiveAt,
+    completedWorkflows: a.completedWorkflows.length,
+    workflowsStarted: Object.keys(a.progress).length,
+  }));
+  return res.json({ total: list.length, trainees: list });
 });
 
 // ─── Entrata AI Chat Endpoint ────────────────────────────────────────────────

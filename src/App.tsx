@@ -16,12 +16,11 @@ import { MobileView } from "./components/entrata/MobileView";
 import { MockEntrataUI } from "./components/entrata/simulation/MockEntrataUI";
 import { VideoPanel } from "./components/entrata/VideoPanel";
 import { ChatAssistant } from "./components/entrata/ChatAssistant";
-import { PinLogin } from "./components/entrata/PinLogin";
+import { AccountSetup, AccountData } from "./components/entrata/AccountSetup";
 import { Certificate } from "./components/entrata/Certificate";
 
 const STORAGE_KEY = "entrata_training_progress";
-const PIN_KEY = "entrata_pin";
-const NAME_KEY = "entrata_name";
+const ACCOUNT_KEY = "entrata_account";
 
 function loadProgress(): Record<string, WorkflowProgress> {
   try {
@@ -40,15 +39,15 @@ function saveProgress(progress: Record<string, WorkflowProgress>) {
   }
 }
 
-async function syncProgressToServer(pin: string, progress: Record<string, WorkflowProgress>) {
+async function syncProgressToServer(email: string, pin: string, progress: Record<string, WorkflowProgress>) {
   try {
     const completedWorkflows = Object.entries(progress)
       .filter(([, p]) => p.completedAt)
       .map(([id]) => id);
-    await fetch(`/api/progress/${pin}`, {
+    await fetch("/api/account/progress", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ progress, completedWorkflows }),
+      body: JSON.stringify({ email, pin, progress, completedWorkflows }),
     });
   } catch {
     // best-effort sync
@@ -388,11 +387,12 @@ function DesktopHeader({ onSearchOpen, mode, onModeToggle, selectedRole, trainee
 export default function App() {
   const isMobile = useIsMobile();
 
-  // PIN auth state
-  const [pin, setPin] = useState<string | null>(() => localStorage.getItem(PIN_KEY));
-  const [traineeName, setTraineeName] = useState<string>(() => localStorage.getItem(NAME_KEY) ?? "");
+  // Account auth state
+  const [account, setAccount] = useState<AccountData | null>(() => {
+    try { const s = localStorage.getItem(ACCOUNT_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const traineeName = account?.name ?? "";
   const [showCertificate, setShowCertificate] = useState<EntrataWorkflow | null>(null);
-  const [justCompletedWorkflowId, setJustCompletedWorkflowId] = useState<string | null>(null);
 
   // Persistent state
   const [progress, setProgress] = useState<Record<string, WorkflowProgress>>(loadProgress);
@@ -422,33 +422,28 @@ export default function App() {
   // Persist progress to localStorage + sync to server
   useEffect(() => {
     saveProgress(progress);
-    if (pin) syncProgressToServer(pin, progress);
-  }, [progress, pin]);
+    if (account) syncProgressToServer(account.email, account.pin, progress);
+  }, [progress, account]);
 
-  // Handle PIN login success
-  function handlePinSuccess(newPin: string, name: string, serverProgress: Record<string, unknown>, _completedWorkflows: string[]) {
-    localStorage.setItem(PIN_KEY, newPin);
-    localStorage.setItem(NAME_KEY, name);
-    setPin(newPin);
-    setTraineeName(name);
-    // Merge server progress with local (server wins for completed)
-    if (Object.keys(serverProgress).length > 0) {
-      const merged = { ...loadProgress(), ...(serverProgress as Record<string, WorkflowProgress>) };
+  function handleAccountSuccess(newAccount: AccountData) {
+    localStorage.setItem(ACCOUNT_KEY, JSON.stringify(newAccount));
+    setAccount(newAccount);
+    if (Object.keys(newAccount.progress).length > 0) {
+      const merged = { ...loadProgress(), ...(newAccount.progress as Record<string, WorkflowProgress>) };
       setProgress(merged);
       saveProgress(merged);
     }
   }
 
   function handleSignOut() {
-    localStorage.removeItem(PIN_KEY);
-    localStorage.removeItem(NAME_KEY);
-    setPin(null);
-    setTraineeName("");
+    localStorage.removeItem(ACCOUNT_KEY);
+    localStorage.removeItem(STORAGE_KEY);
+    setAccount(null);
   }
 
-  // Show PIN login if not authenticated
-  if (!pin) {
-    return <PinLogin onSuccess={handlePinSuccess} />;
+  // Show account setup if not authenticated
+  if (!account) {
+    return <AccountSetup onSuccess={handleAccountSuccess} />;
   }
 
   const activeWorkflow: EntrataWorkflow | null = useMemo(
