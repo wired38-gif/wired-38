@@ -66,8 +66,8 @@ function useIsMobile() {
 }
 
 // ─────────────────────────────────────────
-//  MOBILE SIMULATION VIEW
-//  Full-screen MockEntrataUI + sticky coach bar at bottom
+//  MOBILE STEP VIEW — instructions first
+//  Clean card layout, simulation in modal
 // ─────────────────────────────────────────
 interface MobileSimulationViewProps {
   workflow: EntrataWorkflow;
@@ -84,106 +84,186 @@ function MobileSimulationView({
   onCompleteStep,
   onReset,
 }: MobileSimulationViewProps) {
-  const [showDetail, setShowDetail] = useState(false);
+  const [showSim, setShowSim] = useState(false);
   const step = workflow.steps[currentStepIndex];
   const isComplete = completedSteps.length === workflow.steps.length;
   const pct = Math.round((completedSteps.length / workflow.steps.length) * 100);
+  const isDone = step ? completedSteps.includes(step.id) : false;
 
-  const coachBarRef = React.useRef<HTMLDivElement>(null);
+  if (isComplete) {
+    return (
+      <div className="flex flex-col items-center justify-center bg-slate-900 text-center p-8 min-h-[60vh]">
+        <CheckCircle2 size={56} className="text-emerald-400 mb-4" />
+        <h2 className="text-2xl font-black text-emerald-400 mb-2">Complete!</h2>
+        <p className="text-sm text-slate-400 mb-6">All {workflow.steps.length} steps done</p>
+        <button onClick={onReset} className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl">
+          Restart Workflow
+        </button>
+      </div>
+    );
+  }
+
+  if (!step) return null;
 
   return (
-    <div className="flex flex-col bg-white" style={{ height: "calc(100dvh - 57px)" }}>
-      {/* Compact workflow strip */}
-      <div className="flex-shrink-0 bg-[#003087] px-3 py-2 flex items-center gap-3">
-        <span className="text-white text-xs font-bold truncate flex-1 min-w-0">{workflow.shortName}</span>
-        <span className="text-white/50 text-[10px] flex-shrink-0">
-          {currentStepIndex + 1}/{workflow.steps.length}
-        </span>
-        <div className="w-16 bg-white/20 rounded-full h-1 flex-shrink-0">
-          <div className="bg-emerald-400 h-1 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-        </div>
-        <button onClick={onReset} className="text-white/50 hover:text-white text-[10px] font-semibold flex-shrink-0">Reset</button>
-      </div>
+    <>
+      {/* Step card — full scrollable page */}
+      <div className="bg-slate-950 min-h-screen pb-32">
 
-      {/* Simulation — grows to fill space between header strip and coach bar */}
-      <div className="flex-1 overflow-hidden relative min-h-0">
-        {isComplete ? (
-          <div className="h-full flex flex-col items-center justify-center bg-slate-900 text-center p-6">
-            <CheckCircle2 size={48} className="text-emerald-400 mb-3" />
-            <h2 className="text-xl font-black text-emerald-400 mb-2">Complete!</h2>
-            <p className="text-sm text-slate-400 mb-5">All {workflow.steps.length} steps done — {workflow.taskName}</p>
-            <button onClick={onReset} className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl text-sm">
-              Restart
-            </button>
+        {/* Progress bar */}
+        <div className="bg-[#003087] px-4 py-2 flex items-center gap-3">
+          <span className="text-white text-xs font-bold flex-1 truncate">{workflow.shortName}</span>
+          <span className="text-white/60 text-[10px]">{currentStepIndex + 1}/{workflow.steps.length}</span>
+          <div className="w-20 bg-white/20 rounded-full h-1.5">
+            <div className="bg-emerald-400 h-1.5 rounded-full transition-all" style={{ width: `${pct}%` }} />
           </div>
-        ) : (
-          <MockEntrataUI
-            workflowId={workflow.id}
-            stepId={step?.id ?? ""}
-            onStepComplete={onCompleteStep}
-          />
-        )}
-      </div>
+          <button onClick={onReset} className="text-white/50 text-[10px] font-semibold">Reset</button>
+        </div>
 
-      {/* Coach bar — fixed height collapsed, scrollable when expanded */}
-      {!isComplete && step && (
-        <div ref={coachBarRef} className="flex-shrink-0 bg-slate-900 border-t border-slate-700">
-          {/* Collapsed hint row — always visible */}
-          <button
-            className="w-full px-4 py-2.5 flex items-center gap-3 active:bg-slate-800 transition-colors text-left"
-            onClick={() => setShowDetail(!showDetail)}
-          >
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0066cc] flex items-center justify-center text-[11px] font-black text-white">
-              {completedSteps.includes(step.id) ? "✓" : currentStepIndex + 1}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-bold text-white truncate">{step.action}</div>
-              <div className="text-[10px] text-indigo-400">↑ Tap the highlighted element</div>
-            </div>
-            <ChevronUp size={14} className={`text-slate-500 flex-shrink-0 transition-transform duration-200 ${showDetail ? "" : "rotate-180"}`} />
-          </button>
-
-          {/* Expanded detail — scrollable, max height so it doesn't push sim offscreen */}
-          {showDetail && (
-            <div className="border-t border-slate-800 overflow-y-auto" style={{ maxHeight: "38vh" }}>
-              <div className="px-4 py-3 space-y-2">
-                <div className="flex flex-wrap items-center gap-1">
-                  {step.breadcrumb.map((seg, i) => (
-                    <React.Fragment key={i}>
-                      <code className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${
-                        i === step.breadcrumb.length - 1
-                          ? "bg-[#0066cc]/20 text-blue-300 border-blue-500/40"
-                          : "bg-slate-800 text-slate-400 border-slate-700"
-                      }`}>{seg}</code>
-                      {i < step.breadcrumb.length - 1 && <ChevronRight size={9} className="text-slate-600" />}
-                    </React.Fragment>
-                  ))}
+        <div className="px-4 py-5 space-y-4">
+          {/* Step number + action */}
+          <div className={`rounded-2xl p-4 border ${isDone ? "bg-emerald-500/10 border-emerald-500/30" : "bg-slate-900 border-slate-700"}`}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0 ${
+                isDone ? "bg-emerald-500 text-white" : "bg-[#0066cc] text-white"
+              }`}>
+                {isDone ? "✓" : currentStepIndex + 1}
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
+                  Step {currentStepIndex + 1} of {workflow.steps.length}
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed">{step.description}</p>
-                {step.warning && (
-                  <div className="flex gap-2 bg-amber-500/10 border border-amber-500/25 rounded-lg p-2">
-                    <AlertTriangle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-[11px] text-amber-200">{step.warning}</p>
-                  </div>
-                )}
-                {step.tip && (
-                  <div className="flex gap-2 bg-indigo-500/10 border border-indigo-500/25 rounded-lg p-2">
-                    <Lightbulb size={12} className="text-indigo-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-[11px] text-indigo-200">{step.tip}</p>
-                  </div>
-                )}
-                <button
-                  onClick={() => { onCompleteStep(); setShowDetail(false); }}
-                  className="w-full py-2.5 bg-emerald-600 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 size={15} /> Mark Complete
-                </button>
+                <h2 className={`text-base font-black leading-tight ${isDone ? "text-emerald-400" : "text-white"}`}>
+                  {step.action}
+                </h2>
+              </div>
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed">{step.description}</p>
+          </div>
+
+          {/* Entrata Path */}
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2">Entrata Navigation Path</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {step.breadcrumb.map((seg, i) => (
+                <React.Fragment key={i}>
+                  <code className={`px-2 py-1 rounded-lg text-xs font-mono font-bold border ${
+                    i === step.breadcrumb.length - 1
+                      ? "bg-[#0066cc]/20 text-blue-300 border-blue-500/40"
+                      : "bg-slate-800 text-slate-300 border-slate-600"
+                  }`}>{seg}</code>
+                  {i < step.breadcrumb.length - 1 && (
+                    <ChevronRight size={12} className="text-slate-600 flex-shrink-0" />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
+          {/* Warning */}
+          {step.warning && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex gap-3">
+              <AlertTriangle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-xs font-black text-amber-400 uppercase tracking-wider mb-1">Warning</div>
+                <p className="text-sm text-amber-200 leading-relaxed">{step.warning}</p>
               </div>
             </div>
           )}
+
+          {/* Tip */}
+          {step.tip && (
+            <div className="bg-indigo-500/10 border border-indigo-500/25 rounded-2xl p-4 flex gap-3">
+              <Lightbulb size={18} className="text-indigo-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-xs font-black text-indigo-400 uppercase tracking-wider mb-1">Pro Tip</div>
+                <p className="text-sm text-indigo-200 leading-relaxed">{step.tip}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Show Simulation button */}
+          <button
+            onClick={() => setShowSim(true)}
+            className="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-sm font-bold rounded-2xl flex items-center justify-center gap-2 transition-colors"
+          >
+            <Home size={16} className="text-slate-400" />
+            View Interactive Simulation
+          </button>
+
+          {/* Step list — compact */}
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">All Steps</span>
+            </div>
+            {workflow.steps.map((s, i) => (
+              <div key={s.id} className={`flex items-center gap-3 px-4 py-2.5 border-b border-slate-800/50 last:border-0 ${i === currentStepIndex ? "bg-slate-800/60" : ""}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 ${
+                  completedSteps.includes(s.id) ? "bg-emerald-500 text-white"
+                  : i === currentStepIndex ? "bg-[#0066cc] text-white"
+                  : "bg-slate-700 text-slate-500"
+                }`}>
+                  {completedSteps.includes(s.id) ? "✓" : i + 1}
+                </div>
+                <span className={`text-xs truncate ${
+                  completedSteps.includes(s.id) ? "text-emerald-400 line-through"
+                  : i === currentStepIndex ? "text-white font-semibold"
+                  : "text-slate-500"
+                }`}>{s.action}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Fixed bottom action bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 bg-slate-950 border-t border-slate-800 p-4 pb-safe">
+        {!isDone ? (
+          <button
+            onClick={onCompleteStep}
+            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white text-base font-black rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 active:scale-[0.98] transition-all"
+          >
+            <CheckCircle2 size={20} /> Done — Mark Step Complete
+          </button>
+        ) : currentStepIndex < workflow.steps.length - 1 ? (
+          <button
+            onClick={onCompleteStep}
+            className="w-full py-4 bg-[#0066cc] hover:bg-blue-700 text-white text-base font-black rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all"
+          >
+            Next Step <ChevronRight size={20} />
+          </button>
+        ) : (
+          <div className="w-full py-4 bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-base font-black rounded-2xl flex items-center justify-center gap-2">
+            <CheckCircle2 size={20} /> All Steps Complete!
+          </div>
+        )}
+      </div>
+
+      {/* Fullscreen simulation modal */}
+      {showSim && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+          <div className="bg-[#003087] px-4 py-3 flex items-center gap-3 flex-shrink-0">
+            <button onClick={() => setShowSim(false)} className="text-white p-1">
+              <X size={20} />
+            </button>
+            <span className="text-white text-sm font-bold flex-1">{step.action}</span>
+            <button
+              onClick={() => { onCompleteStep(); setShowSim(false); }}
+              className="px-3 py-1.5 bg-emerald-500 text-white text-xs font-black rounded-lg"
+            >
+              Done ✓
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <MockEntrataUI
+              workflowId={workflow.id}
+              stepId={step.id}
+              onStepComplete={() => { onCompleteStep(); setShowSim(false); }}
+            />
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
