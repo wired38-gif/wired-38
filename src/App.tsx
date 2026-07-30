@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 
 import { ENTRATA_WORKFLOWS, ROLES } from "./data/workflows";
-import { EntrataWorkflow, RoleType, WorkflowProgress, AppMode, ViewMode } from "./entrataTypes";
+import { EntrataWorkflow, RoleType, WorkflowProgress, AppMode } from "./entrataTypes";
 import { Sidebar } from "./components/entrata/Sidebar";
 import { WorkflowSimulator } from "./components/entrata/WorkflowSimulator";
 import { CoachPanel } from "./components/entrata/CoachPanel";
@@ -13,6 +13,7 @@ import { SearchOverlay } from "./components/entrata/SearchOverlay";
 import { QuickReference } from "./components/entrata/QuickReference";
 import { MobileView } from "./components/entrata/MobileView";
 import { MockEntrataUI } from "./components/entrata/simulation/MockEntrataUI";
+import { VideoPanel } from "./components/entrata/VideoPanel";
 
 const STORAGE_KEY = "entrata_training_progress";
 
@@ -234,7 +235,7 @@ export default function App() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
   const [mode, setMode] = useState<AppMode>("learning");
-  const [currentView, setCurrentView] = useState<ViewMode>("workflow");
+  const [currentView, setCurrentView] = useState<"workflow" | "reference" | "glossary" | "videos">("workflow");
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -279,7 +280,7 @@ export default function App() {
     setMobileMenuOpen(false);
   }
 
-  function handleViewChange(view: "workflow" | "reference" | "glossary") {
+  function handleViewChange(view: "workflow" | "reference" | "glossary" | "videos") {
     setCurrentView(view);
     if (view !== "workflow") setActiveWorkflowId(null);
   }
@@ -385,7 +386,11 @@ export default function App() {
         </MobileDrawer>
 
         {/* Mobile Content */}
-        {currentView === "workflow" && activeWorkflow ? (
+        {currentView === "videos" ? (
+          <div className="pb-6 h-[calc(100vh-57px)] overflow-y-auto">
+            <VideoPanel selectedRole={selectedRole} />
+          </div>
+        ) : currentView === "workflow" && activeWorkflow ? (
           <MobileView
             workflow={activeWorkflow}
             currentStepIndex={currentStepIndex}
@@ -462,7 +467,9 @@ export default function App() {
 
         {/* CENTER: Simulation Workspace (50%) */}
         <div className="flex-1 overflow-hidden border-x border-slate-800">
-          {currentView === "workflow" ? (
+          {currentView === "videos" ? (
+            <VideoPanel selectedRole={selectedRole} />
+          ) : currentView === "workflow" ? (
             mode === "learning" && activeWorkflow && completedSteps.length < activeWorkflow.steps.length ? (
               <MockEntrataUI
                 workflowId={activeWorkflow.id}
