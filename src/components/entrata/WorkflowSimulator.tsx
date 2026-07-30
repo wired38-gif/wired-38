@@ -168,26 +168,48 @@ export function WorkflowSimulator({
 }: WorkflowSimulatorProps) {
   if (!workflow) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-        <div className="w-20 h-20 bg-slate-800/80 rounded-3xl flex items-center justify-center mb-6 border border-slate-700">
-          <BookOpen size={36} className="text-slate-600" />
+      <div className="h-full flex flex-col items-center justify-center p-8 text-center overflow-auto">
+        <div className="w-20 h-20 bg-gradient-to-br from-indigo-600/30 to-violet-600/20 rounded-3xl flex items-center justify-center mb-5 border border-indigo-500/30">
+          <BookOpen size={36} className="text-indigo-400" />
         </div>
-        <h2 className="text-xl font-bold text-slate-300 mb-2">Select a Workflow</h2>
-        <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-          Choose any workflow from the left sidebar to begin your interactive training session.
+        <h2 className="text-xl font-bold text-white mb-2">Entrata Training Hub</h2>
+        <p className="text-sm text-slate-400 max-w-xs leading-relaxed mb-6">
+          Select any workflow from the left panel to launch the interactive simulation. The center shows a live mock Entrata interface — click the highlighted element each step.
         </p>
-        <div className="mt-6 grid grid-cols-2 gap-3 w-full max-w-sm">
-          {[
-            { label: "Move-In Process", icon: <Home size={14} />, color: "text-amber-400" },
-            { label: "Work Orders", icon: <Wrench size={14} />, color: "text-emerald-400" },
-            { label: "Post a Charge", icon: <DollarSign size={14} />, color: "text-rose-400" },
-            { label: "Daily Report", icon: <BarChart2 size={14} />, color: "text-violet-400" },
-          ].map(item => (
-            <div key={item.label} className="bg-slate-800/50 border border-slate-700 rounded-xl p-3 flex items-center gap-2">
-              <span className={item.color}>{item.icon}</span>
-              <span className="text-xs text-slate-400">{item.label}</span>
+
+        {/* Feature cards */}
+        <div className="w-full max-w-md grid grid-cols-1 gap-3">
+          <div className="bg-slate-800/60 border border-indigo-500/30 rounded-2xl p-4 text-left flex gap-4">
+            <div className="w-10 h-10 bg-indigo-600/20 rounded-xl flex items-center justify-center flex-shrink-0 border border-indigo-500/30">
+              <Users size={18} className="text-indigo-400" />
             </div>
-          ))}
+            <div>
+              <div className="text-sm font-bold text-white mb-0.5">Interactive Simulation</div>
+              <div className="text-xs text-slate-400 leading-relaxed">The center panel becomes a real-looking Entrata interface. A pulsing blue ring shows exactly what to click each step.</div>
+            </div>
+          </div>
+          <div className="bg-slate-800/60 border border-red-500/20 rounded-2xl p-4 text-left flex gap-4">
+            <div className="w-10 h-10 bg-red-600/15 rounded-xl flex items-center justify-center flex-shrink-0 border border-red-500/20">
+              <BarChart2 size={18} className="text-red-400" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white mb-0.5">Training Videos</div>
+              <div className="text-xs text-slate-400 leading-relaxed">Click "Videos" in the sidebar to watch the full Entrata CRM training playlist and tutorial videos inline.</div>
+            </div>
+          </div>
+          <div className="bg-slate-800/60 border border-violet-500/20 rounded-2xl p-4 text-left flex gap-4">
+            <div className="w-10 h-10 bg-violet-600/15 rounded-xl flex items-center justify-center flex-shrink-0 border border-violet-500/20">
+              <Wrench size={18} className="text-violet-400" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white mb-0.5">AI Chat Assistant</div>
+              <div className="text-xs text-slate-400 leading-relaxed">See the glowing button in the bottom-right corner? That's Entrata AI — ask it anything and it navigates you to the right workflow.</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 text-xs text-slate-600 flex items-center gap-1.5">
+          <span>←</span> Pick any workflow in the sidebar to get started
         </div>
       </div>
     );

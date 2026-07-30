@@ -398,6 +398,121 @@ Your output must contain:
   }
 });
 
+// ─── Entrata AI Chat Endpoint ────────────────────────────────────────────────
+const ENTRATA_SYSTEM_PROMPT = `You are "Entrata AI" — a friendly, expert virtual trainer for Entrata property management software. You help leasing agents, maintenance technicians, and property managers master Entrata quickly.
+
+You have deep expertise in:
+- All Entrata navigation paths and workflows
+- Leasing: prospects, applications, move-ins, renewals, notice to vacate
+- Maintenance: work orders, inspections, emergency procedures
+- Financial: ledger, post charges, accept payments, delinquency management
+- Reports: daily operations, occupancy, delinquency, lease expiration
+- Resident services: portal setup, communications
+- Property management terminology: SODA, NTV, PTE, income codes, ledger, MTM, etc.
+
+WORKFLOW NAVIGATION PATHS (memorize these exactly):
+- Create Prospect: Residents → Prospects → Add Prospect
+- Process Application: Residents → Applicants → [Select] → Review Application
+- Move-In: Residents → Prospects → [Select] → Finalize Lease → Financial Tab → Verify Balance → Move In Action → Enter Date/Fob → Save
+- Notice to Vacate: Residents → Residents → [Select Resident] → Actions → Notice to Vacate
+- Move-Out & SODA: Residents → Residents → [Select] → Actions → Move Out Resident → Financial Tab → Post Charges → Close Ledger → Generate SODA
+- Lease Renewal: Residents → Residents → [Select] → Renewals → Create Renewal Offer
+- Work Order: Services → Maintenance → Work Orders → Add Work Order → Select Unit → Category/Priority → Permission to Enter → Assign Tech → Submit
+- Post Charge: Residents → [Select Resident] → Ledger Tab → Post Charge → Income Code → Amount/Date → Description → Post
+- Accept Payment: Residents → [Select Resident] → Ledger Tab → Accept Payment → Method → Amount → Post → Print Receipt
+- Daily Operations Report: Reports → Property Management → Daily Operations Report → Filter Property → Set Today → Generate
+- Delinquency Report: Reports → Financial → Delinquency Report
+
+KEY TERMS:
+- SODA: Security Deposit Disposition Accounting — legal doc mailing security deposit deductions after move-out
+- NTV: Notice to Vacate — resident's written intent to move out
+- PTE: Permission to Enter — resident authorization for maintenance to enter without them present
+- Income Code: Property-defined code categorizing financial transactions (RENT01, LATE01, PET01, etc.)
+- Ledger: Full financial transaction history for a resident's account
+- MTM: Month-to-Month lease — no fixed end date, usually at premium rent
+- Economic Occupancy: % of potential gross rent actually collected (vs Physical Occupancy = units occupied)
+- Make Ready: Process of preparing a vacant unit for next resident
+- Adverse Action Letter: Required legal notice sent to denied applicants per FCRA
+
+RESPONSE RULES:
+1. Be concise and actionable — get to the answer fast
+2. For navigation questions, always give the exact path in this format: Entrata → Module → Submenu → Action
+3. When your answer relates to a specific workflow, end with: [NAVIGATE:workflow_id] where workflow_id is one of:
+   create-prospect, process-application, move-in, notice-to-vacate, move-out, lease-renewal,
+   create-work-order, emergency-work-order, unit-inspection, post-manual-fee, accept-payment,
+   delinquency, daily-operations-report, occupancy-report, resident-portal-setup
+4. Keep answers under 150 words unless a detailed step-by-step is explicitly requested
+5. Use bullet points for multi-step answers
+6. For legal/compliance questions (SODA timing, adverse action, etc.), note that state laws vary and they should verify locally`;
+
+app.post("/api/entrata-chat", async (req, res) => {
+  try {
+    const { message, history = [] } = req.body as {
+      message: string;
+      history: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>;
+    };
+
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Message is required." });
+    }
+
+    // Try Gemini if configured
+    if (process.env.GEMINI_API_KEY) {
+      const ai = getAiClient();
+      const chat = ai.chats.create({
+        model: "gemini-2.0-flash",
+        config: { systemInstruction: ENTRATA_SYSTEM_PROMPT },
+        history,
+      });
+      const response = await chat.sendMessage({ message });
+      return res.json({ reply: response.text ?? "I couldn't generate a response. Please try again." });
+    }
+
+    // Fallback: keyword-based local knowledge
+    const q = message.toLowerCase();
+    let reply = "";
+
+    if (q.includes("move-in") || q.includes("move in") || q.includes("movein")) {
+      reply = "**Move-In Process:**\n1. Open the prospect profile: Residents → Prospects → [Select Name]\n2. Click **Finalize Lease** and verify all lease terms\n3. Go to **Financial Tab** — confirm balance is $0.00 or meets your move-in requirement\n4. Click **Actions → Move In**\n5. Enter the official move-in date and key/fob number\n6. Click **Save** ✓\n\n⚠️ Never complete a move-in without verifying the ledger balance first. [NAVIGATE:move-in]";
+    } else if (q.includes("soda") || q.includes("security deposit")) {
+      reply = "**SODA (Security Deposit Disposition Accounting):**\nThis is the legal document itemizing all deductions from a security deposit after move-out. It must be mailed to the resident's forwarding address within your state's mandated timeframe (typically 14–30 days — check your state law).\n\nTo generate: Resident Profile → Financial Tab → Generate SODA [NAVIGATE:move-out]";
+    } else if (q.includes("work order") || q.includes("maintenance request")) {
+      reply = "**Create a Work Order:**\nServices → Maintenance → Work Orders → Add Work Order\n\n Key fields:\n- **Priority**: Emergency (4hr), Urgent (24hr), Standard (3–5 days)\n- **Permission to Enter**: Always check if resident authorized entry\n- **Assign Tech**: Select or leave Unassigned for supervisor to dispatch [NAVIGATE:create-work-order]";
+    } else if (q.includes("ntv") || q.includes("notice to vacate")) {
+      reply = "**Notice to Vacate (NTV):**\nResidents → Residents → [Select Resident] → Actions → Notice to Vacate\n\nEnter the date notice was received, expected move-out date, and vacate reason. The system will automatically update the unit's availability on the leasing calendar. [NAVIGATE:notice-to-vacate]";
+    } else if (q.includes("late fee") || q.includes("post charge") || q.includes("ledger")) {
+      reply = "**Post a Manual Charge:**\nResident Profile → Ledger Tab → Post Charge\n\nSelect the correct **Income Code** (e.g., LATE01 for late fees), enter amount and date, add a description, then click Post Charge. The charge appears immediately on the resident portal. [NAVIGATE:post-manual-fee]";
+    } else if (q.includes("delinquency") || q.includes("delinquent") || q.includes("past due")) {
+      reply = "**Delinquency Management:**\nReports → Financial → Delinquency Report\n\nRun daily after the rent due date. Post late fees, generate Pay or Quit notices, and document all contact attempts in the resident's Notes. Escalate to eviction if unpaid after cure period. [NAVIGATE:delinquency]";
+    } else if (q.includes("report") || q.includes("daily ops") || q.includes("occupancy")) {
+      reply = "**Daily Operations Report:**\nReports → Property Management → Daily Operations Report → Select Property → Set Date to Today → Generate\n\nKey metrics: Occupancy %, Move-Ins/Move-Outs today, Delinquency, Open Work Orders. Run this every morning. [NAVIGATE:daily-operations-report]";
+    } else if (q.includes("prospect") || q.includes("lead") || q.includes("new renter")) {
+      reply = "**Add a New Prospect:**\nResidents → Prospects → Add Prospect\n\nFill in contact info, unit preference, desired move-in date, and — critically — the lead source. Sending the portal invite immediately speeds up the application process. [NAVIGATE:create-prospect]";
+    } else if (q.includes("renewal") || q.includes("renew")) {
+      reply = "**Lease Renewal:**\nResidents → Residents → [Select] → Renewals Tab → Create Renewal Offer\n\nStart outreach 90 days before lease end. Set new terms (Fixed-Term or MTM), send the offer, then countersign once the resident signs electronically. [NAVIGATE:lease-renewal]";
+    } else if (q.includes("portal") || q.includes("online access") || q.includes("resident portal")) {
+      reply = "**Send Resident Portal Invite:**\nResident Profile → Portal section → Send Portal Invite\n\nVerify the email address first! The link expires in 72 hours. Portal benefits include online rent payment, maintenance requests, lease documents, and community announcements. [NAVIGATE:resident-portal-setup]";
+    } else if (q.includes("move-out") || q.includes("move out") || q.includes("moveout")) {
+      reply = "**Move-Out Process:**\n1. Resident Profile → Actions → Move Out Resident\n2. Enter move-out date & forwarding address (required for SODA)\n3. Financial Tab → Post all move-out charges\n4. Click Close Ledger\n5. Generate SODA PDF and mail within state timeframe\n\n⚠️ Always document charges with photos before posting. [NAVIGATE:move-out]";
+    } else if (q.includes("pte") || q.includes("permission to enter")) {
+      reply = "**Permission to Enter (PTE):**\nThis authorizes maintenance staff to enter a unit without the resident present. Always check the PTE checkbox on a work order before entering — it's your legal protection.\n\nResident can grant PTE per-work-order or as a standing authorization on their profile. [NAVIGATE:create-work-order]";
+    } else if (q.includes("income code") || q.includes("charge code")) {
+      reply = "**Income Codes** classify financial transactions in Entrata. Common codes:\n- **RENT01** — Monthly Rent\n- **LATE01** — Late Fee\n- **PET01** — Pet Fee\n- **PARK01** — Parking\n- **CLEAN01** — Cleaning Fee\n- **UTIL01** — Utility Reconciliation\n\nUsing the wrong code misclassifies revenue in accounting. When in doubt, ask your manager. [NAVIGATE:post-manual-fee]";
+    } else if (q.includes("application") || q.includes("screening") || q.includes("background")) {
+      reply = "**Process an Application:**\nResidents → Applicants → [Select] → Run Screening\n\nScreening checks credit, criminal history, and eviction records. For denials, generate an **Adverse Action Letter** (legally required per FCRA). Verify income is at least 3× the monthly rent before approving. [NAVIGATE:process-application]";
+    } else if (q.includes("inspect") || q.includes("make ready") || q.includes("punch list")) {
+      reply = "**Unit Inspection:**\nServices → Inspections → Add Inspection\n\nSelect inspection type (Move-Out, Move-In, Make Ready), assign the unit and inspector. Complete the room-by-room checklist and photograph every damaged item. Submit to generate the inspection report PDF. [NAVIGATE:unit-inspection]";
+    } else {
+      reply = "I'm your Entrata AI assistant! I can help with:\n\n• **Workflows** — move-in, move-out, work orders, renewals\n• **Navigation** — exact paths like Residents → Prospects → Add Prospect\n• **Terms** — SODA, NTV, PTE, income codes, ledger\n• **Procedures** — delinquency, screening, SODA generation\n\nTry asking: *\"How do I process a move-in?\"*, *\"What is SODA?\"*, or *\"How do I post a late fee?\"*";
+    }
+
+    return res.json({ reply });
+  } catch (err: any) {
+    console.error("Entrata chat error:", err);
+    res.status(500).json({ error: err.message || "Chat service error." });
+  }
+});
+
 // Setup development or production server modes
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

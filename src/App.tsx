@@ -14,6 +14,7 @@ import { QuickReference } from "./components/entrata/QuickReference";
 import { MobileView } from "./components/entrata/MobileView";
 import { MockEntrataUI } from "./components/entrata/simulation/MockEntrataUI";
 import { VideoPanel } from "./components/entrata/VideoPanel";
+import { ChatAssistant } from "./components/entrata/ChatAssistant";
 
 const STORAGE_KEY = "entrata_training_progress";
 
@@ -278,6 +279,15 @@ export default function App() {
     setActiveWorkflowId(id);
     setCurrentView("workflow");
     setMobileMenuOpen(false);
+    // Auto-initialize progress so simulation shows immediately
+    if (!progress[id]) {
+      setCurrentStepIndex(0);
+      setCompletedSteps([]);
+    }
+  }
+
+  function handleChatNavigate(workflowId: string) {
+    handleWorkflowSelect(workflowId);
   }
 
   function handleViewChange(view: "workflow" | "reference" | "glossary" | "videos") {
@@ -433,6 +443,9 @@ export default function App() {
             onClose={() => setSearchOpen(false)}
           />
         )}
+
+        {/* AI Chat Assistant */}
+        <ChatAssistant onNavigate={handleChatNavigate} />
       </div>
     );
   }
@@ -470,12 +483,25 @@ export default function App() {
           {currentView === "videos" ? (
             <VideoPanel selectedRole={selectedRole} />
           ) : currentView === "workflow" ? (
-            mode === "learning" && activeWorkflow && completedSteps.length < activeWorkflow.steps.length ? (
-              <MockEntrataUI
-                workflowId={activeWorkflow.id}
-                stepId={activeWorkflow.steps[currentStepIndex]?.id ?? ""}
-                onStepComplete={handleCompleteStep}
-              />
+            mode === "learning" && activeWorkflow ? (
+              completedSteps.length < activeWorkflow.steps.length ? (
+                <MockEntrataUI
+                  workflowId={activeWorkflow.id}
+                  stepId={activeWorkflow.steps[currentStepIndex]?.id ?? ""}
+                  onStepComplete={handleCompleteStep}
+                />
+              ) : (
+                /* All steps done — show completion screen */
+                <WorkflowSimulator
+                  workflow={activeWorkflow}
+                  currentStepIndex={currentStepIndex}
+                  completedSteps={completedSteps}
+                  onStepClick={handleStepClick}
+                  onStart={handleStart}
+                  onReset={handleReset}
+                  mode={mode}
+                />
+              )
             ) : (
               <WorkflowSimulator
                 workflow={activeWorkflow}
@@ -517,6 +543,9 @@ export default function App() {
           onClose={() => setSearchOpen(false)}
         />
       )}
+
+      {/* AI Chat Assistant */}
+      <ChatAssistant onNavigate={handleChatNavigate} />
     </div>
   );
 }
