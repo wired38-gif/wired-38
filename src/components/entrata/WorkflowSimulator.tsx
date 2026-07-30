@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Clock, Layers, Users, Wrench, DollarSign, BarChart2,
   Star, ChevronRight, Play, RotateCcw, CheckCircle2, BookOpen,
-  AlertTriangle, Lightbulb, Home
+  AlertTriangle, Lightbulb, Home, Youtube, X
 } from "lucide-react";
+import { TRAINING_VIDEOS, WORKFLOW_VIDEO_MAP, PLAYLIST_ID } from "../../data/videos";
 import { EntrataWorkflow, WorkflowStep } from "../../entrataTypes";
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -32,6 +33,43 @@ interface WorkflowSimulatorProps {
   onStart: () => void;
   onReset: () => void;
   mode: "learning" | "quick-reference";
+}
+
+function WorkflowVideoButton({ workflowId }: { workflowId: string }) {
+  const [open, setOpen] = useState(false);
+  const videoId = WORKFLOW_VIDEO_MAP[workflowId];
+  const video = TRAINING_VIDEOS.find(v => v.id === videoId);
+  if (!video) return null;
+
+  const embedSrc = video.youtubeId === PLAYLIST_ID
+    ? `https://www.youtube.com/embed/videoseries?list=${PLAYLIST_ID}&rel=0`
+    : `https://www.youtube.com/embed/${video.youtubeId}?rel=0&autoplay=1`;
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 px-3 py-2 bg-red-600/15 hover:bg-red-600/25 border border-red-500/30 text-red-400 text-xs font-bold rounded-xl transition-all"
+      >
+        <Youtube size={13} /> Watch Video
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-3xl bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+              <span className="text-sm font-bold text-white flex items-center gap-2"><Youtube size={14} className="text-red-500" />{video.title}</span>
+              <button onClick={() => setOpen(false)} className="text-slate-500 hover:text-white p-1"><X size={18} /></button>
+            </div>
+            <div className="relative w-full" style={{ paddingTop: "56.25%" }}>
+              <iframe className="absolute inset-0 w-full h-full" src={embedSrc} title={video.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 function PathDisplay({ path }: { path: string[] }) {
@@ -257,11 +295,11 @@ export function WorkflowSimulator({
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
           {!isStarted && !isComplete && (
             <button
               onClick={onStart}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition-all duration-150 shadow-lg shadow-indigo-900/40"
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition-all"
             >
               <Play size={14} />
               Start Training
@@ -270,7 +308,7 @@ export function WorkflowSimulator({
           {(isStarted || isComplete) && (
             <button
               onClick={onReset}
-              className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded-xl transition-all duration-150"
+              className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded-xl transition-all"
             >
               <RotateCcw size={13} />
               Reset
@@ -282,6 +320,8 @@ export function WorkflowSimulator({
               Complete!
             </div>
           )}
+          {/* Inline video button */}
+          {workflow && WORKFLOW_VIDEO_MAP[workflow.id] && <WorkflowVideoButton workflowId={workflow.id} />}
         </div>
       </div>
 

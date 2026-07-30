@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Search, BookOpen, Menu, X, ChevronDown, ToggleLeft, ToggleRight,
-  Home, Wrench, DollarSign, BarChart2, Users, Star, Bell, HelpCircle
+  Home, Wrench, DollarSign, BarChart2, Users, Star, Bell, HelpCircle,
+  ChevronRight, ChevronUp, CheckCircle2, AlertTriangle, Lightbulb
 } from "lucide-react";
 
 import { ENTRATA_WORKFLOWS, ROLES } from "./data/workflows";
@@ -43,6 +44,137 @@ function useIsMobile() {
     return () => window.removeEventListener("resize", handler);
   }, []);
   return isMobile;
+}
+
+// ─────────────────────────────────────────
+//  MOBILE SIMULATION VIEW
+//  Full-screen MockEntrataUI + sticky coach bar at bottom
+// ─────────────────────────────────────────
+interface MobileSimulationViewProps {
+  workflow: EntrataWorkflow;
+  currentStepIndex: number;
+  completedSteps: string[];
+  onCompleteStep: () => void;
+  onReset: () => void;
+}
+
+function MobileSimulationView({
+  workflow,
+  currentStepIndex,
+  completedSteps,
+  onCompleteStep,
+  onReset,
+}: MobileSimulationViewProps) {
+  const [showDetail, setShowDetail] = useState(false);
+  const step = workflow.steps[currentStepIndex];
+  const isComplete = completedSteps.length === workflow.steps.length;
+  const pct = Math.round((completedSteps.length / workflow.steps.length) * 100);
+
+  return (
+    <div className="flex flex-col bg-white" style={{ height: "calc(100vh - 57px)" }}>
+      {/* Workflow context strip */}
+      <div className="flex-shrink-0 bg-[#003087] px-3 py-1.5 flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-white/60 text-[10px] font-semibold uppercase tracking-wider truncate">
+            {workflow.shortName}
+          </span>
+          <span className="text-white/40 text-[10px]">·</span>
+          <span className="text-white/60 text-[10px]">
+            Step {currentStepIndex + 1}/{workflow.steps.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-20 bg-white/20 rounded-full h-1">
+            <div className="bg-emerald-400 h-1 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+          </div>
+          <button onClick={onReset} className="text-white/50 hover:text-white text-[10px] font-semibold">Reset</button>
+        </div>
+      </div>
+
+      {/* Full-screen simulation */}
+      <div className="flex-1 overflow-hidden relative">
+        {isComplete ? (
+          <div className="h-full flex flex-col items-center justify-center bg-slate-900 text-center p-8">
+            <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mb-4 border-2 border-emerald-500/40">
+              <CheckCircle2 size={40} className="text-emerald-400" />
+            </div>
+            <h2 className="text-2xl font-black text-emerald-400 mb-2">Complete!</h2>
+            <p className="text-sm text-slate-400 mb-6">You finished all {workflow.steps.length} steps of <strong className="text-white">{workflow.taskName}</strong></p>
+            <button onClick={onReset} className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl">
+              Restart Workflow
+            </button>
+          </div>
+        ) : (
+          <MockEntrataUI
+            workflowId={workflow.id}
+            stepId={step?.id ?? ""}
+            onStepComplete={onCompleteStep}
+          />
+        )}
+      </div>
+
+      {/* Sticky bottom coach bar */}
+      {!isComplete && step && (
+        <div className="flex-shrink-0 bg-slate-900 border-t border-slate-700 shadow-2xl">
+          {/* Hint strip */}
+          <div
+            className="px-4 py-3 flex items-center gap-3 cursor-pointer active:bg-slate-800 transition-colors"
+            onClick={() => setShowDetail(!showDetail)}
+          >
+            <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#0066cc] flex items-center justify-center text-xs font-bold text-white">
+              {completedSteps.includes(step.id) ? "✓" : currentStepIndex + 1}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-bold text-white truncate">{step.action}</div>
+              <div className="text-[10px] text-indigo-400 font-semibold mt-0.5">
+                ↑ Tap the blue-highlighted element above
+              </div>
+            </div>
+            <ChevronUp size={16} className={`text-slate-500 flex-shrink-0 transition-transform ${showDetail ? "rotate-180" : ""}`} />
+          </div>
+
+          {/* Expandable detail */}
+          {showDetail && (
+            <div className="px-4 pb-4 space-y-2 border-t border-slate-800">
+              {/* Breadcrumb */}
+              <div className="flex flex-wrap items-center gap-1 pt-3">
+                {step.breadcrumb.map((seg, i) => (
+                  <React.Fragment key={i}>
+                    <code className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${
+                      i === step.breadcrumb.length - 1
+                        ? "bg-[#0066cc]/20 text-blue-300 border-blue-500/40"
+                        : "bg-slate-800 text-slate-400 border-slate-700"
+                    }`}>{seg}</code>
+                    {i < step.breadcrumb.length - 1 && <ChevronRight size={9} className="text-slate-600" />}
+                  </React.Fragment>
+                ))}
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">{step.description}</p>
+              {step.warning && (
+                <div className="flex gap-2 bg-amber-500/10 border border-amber-500/25 rounded-lg p-2">
+                  <AlertTriangle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-amber-200 leading-relaxed">{step.warning}</p>
+                </div>
+              )}
+              {step.tip && (
+                <div className="flex gap-2 bg-indigo-500/10 border border-indigo-500/25 rounded-lg p-2">
+                  <Lightbulb size={12} className="text-indigo-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-indigo-200 leading-relaxed">{step.tip}</p>
+                </div>
+              )}
+              <button
+                onClick={() => { onCompleteStep(); setShowDetail(false); }}
+                className="w-full py-3 bg-emerald-600 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 size={16} />
+                Mark Step Complete (if already clicked)
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────
@@ -396,41 +528,49 @@ export default function App() {
         </MobileDrawer>
 
         {/* Mobile Content */}
-        {currentView === "videos" ? (
-          <div className="pb-6 h-[calc(100vh-57px)] overflow-y-auto">
-            <VideoPanel selectedRole={selectedRole} />
-          </div>
-        ) : currentView === "workflow" && activeWorkflow ? (
-          <MobileView
-            workflow={activeWorkflow}
-            currentStepIndex={currentStepIndex}
-            completedSteps={completedSteps}
-            onCompleteStep={handleCompleteStep}
-            onNextStep={handleNextStep}
-            onPrevStep={handlePrevStep}
-            onReset={handleReset}
-            onStart={handleStart}
-          />
-        ) : (currentView === "reference" || currentView === "glossary") ? (
-          <div className="pb-6">
+        {currentView === "reference" || currentView === "glossary" ? (
+          <div className="pb-6 overflow-y-auto h-[calc(100vh-57px)]">
             <QuickReference view={currentView as "reference" | "glossary"} selectedRole={selectedRole} />
           </div>
+        ) : currentView === "workflow" && activeWorkflow ? (
+          mode === "learning" && completedSteps.length < activeWorkflow.steps.length ? (
+            /* ── MOBILE SIMULATION MODE ─────────────────── */
+            <MobileSimulationView
+              workflow={activeWorkflow}
+              currentStepIndex={currentStepIndex}
+              completedSteps={completedSteps}
+              onCompleteStep={handleCompleteStep}
+              onReset={handleReset}
+            />
+          ) : (
+            /* Quick Ref mode or completed workflow */
+            <MobileView
+              workflow={activeWorkflow}
+              currentStepIndex={currentStepIndex}
+              completedSteps={completedSteps}
+              onCompleteStep={handleCompleteStep}
+              onNextStep={handleNextStep}
+              onPrevStep={handlePrevStep}
+              onReset={handleReset}
+              onStart={handleStart}
+            />
+          )
         ) : (
           /* No workflow selected — landing */
           <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-            <div className="w-20 h-20 bg-slate-800 rounded-3xl flex items-center justify-center mb-6 border border-slate-700">
-              <BookOpen size={36} className="text-slate-500" />
+            <div className="w-20 h-20 bg-gradient-to-br from-indigo-600/30 to-violet-600/20 rounded-3xl flex items-center justify-center mb-5 border border-indigo-500/30">
+              <BookOpen size={36} className="text-indigo-400" />
             </div>
-            <h2 className="text-xl font-bold text-white mb-2">Choose a Workflow</h2>
-            <p className="text-sm text-slate-500 mb-6 max-w-xs leading-relaxed">
-              Tap the menu to browse and select a training workflow to get started.
+            <h2 className="text-xl font-bold text-white mb-2">Entrata Training</h2>
+            <p className="text-sm text-slate-400 mb-4 max-w-xs leading-relaxed">
+              Pick a workflow to launch the interactive Entrata simulation. Tap the highlighted element each step.
             </p>
             <button
               onClick={() => setMobileMenuOpen(true)}
               className="flex items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-900/30"
             >
               <Menu size={16} />
-              Open Training Menu
+              Browse Workflows
             </button>
           </div>
         )}

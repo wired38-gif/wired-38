@@ -1,6 +1,7 @@
-import React from "react";
-import { CheckCircle2, AlertTriangle, Lightbulb, ChevronRight, Clock, Target, ArrowRight } from "lucide-react";
+import React, { useState } from "react";
+import { CheckCircle2, AlertTriangle, Lightbulb, ChevronRight, Clock, Target, ArrowRight, Youtube, Play, X } from "lucide-react";
 import { EntrataWorkflow, WorkflowStep } from "../../entrataTypes";
+import { TRAINING_VIDEOS, WORKFLOW_VIDEO_MAP, PLAYLIST_ID } from "../../data/videos";
 
 interface CoachPanelProps {
   workflow: EntrataWorkflow | null;
@@ -61,6 +62,17 @@ export function CoachPanel({
   onCompleteStep,
   isSimulationMode = false,
 }: CoachPanelProps) {
+  const [videoOpen, setVideoOpen] = useState(false);
+
+  // Find relevant video for current workflow
+  const videoId = workflow ? WORKFLOW_VIDEO_MAP[workflow.id] : null;
+  const relatedVideo = videoId ? TRAINING_VIDEOS.find(v => v.id === videoId) : null;
+  const embedSrc = relatedVideo
+    ? relatedVideo.youtubeId === PLAYLIST_ID
+      ? `https://www.youtube.com/embed/videoseries?list=${PLAYLIST_ID}&rel=0`
+      : `https://www.youtube.com/embed/${relatedVideo.youtubeId}?rel=0&autoplay=1`
+    : null;
+
   if (!workflow) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-6 text-center bg-slate-900/50">
@@ -232,6 +244,43 @@ export function CoachPanel({
           </>
         ) : null}
       </div>
+
+      {/* Related Video */}
+      {relatedVideo && !isComplete && (
+        <div className="px-4 pb-2 flex-shrink-0">
+          {!videoOpen ? (
+            <button
+              onClick={() => setVideoOpen(true)}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-red-600/10 hover:bg-red-600/20 border border-red-500/25 rounded-xl transition-all group"
+            >
+              <div className="w-8 h-8 bg-red-600/20 rounded-lg flex items-center justify-center flex-shrink-0 border border-red-500/30">
+                <Play size={12} className="text-red-400 translate-x-0.5" fill="currentColor" />
+              </div>
+              <div className="flex-1 text-left min-w-0">
+                <div className="text-[11px] font-bold text-red-400">Watch Related Video</div>
+                <div className="text-[10px] text-slate-500 truncate">{relatedVideo.title}</div>
+              </div>
+              <Youtube size={14} className="text-red-500/60 flex-shrink-0" />
+            </button>
+          ) : (
+            <div className="rounded-xl overflow-hidden border border-red-500/25 bg-black">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-slate-800">
+                <span className="text-[11px] font-bold text-red-400 flex items-center gap-1"><Youtube size={11} /> {relatedVideo.title}</span>
+                <button onClick={() => setVideoOpen(false)} className="text-slate-500 hover:text-white"><X size={13} /></button>
+              </div>
+              <div className="relative w-full" style={{ paddingTop: "56.25%" }}>
+                <iframe
+                  className="absolute inset-0 w-full h-full"
+                  src={embedSrc ?? ""}
+                  title={relatedVideo.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Action Buttons */}
       {!isComplete && currentStep && (

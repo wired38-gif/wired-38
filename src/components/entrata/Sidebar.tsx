@@ -118,39 +118,26 @@ export function Sidebar({
 
       {/* Navigation Shortcuts */}
       <div className="px-3 py-2 border-b border-slate-800">
-        <div className="grid grid-cols-3 gap-1">
+        <div className="grid grid-cols-2 gap-1">
           <button
             onClick={() => onViewChange("reference")}
-            className={`flex flex-col items-center gap-0.5 py-2 rounded-md text-[9px] font-semibold transition-all border ${
+            className={`flex items-center justify-center gap-1 py-2 rounded-md text-[10px] font-semibold transition-all border ${
               currentView === "reference"
                 ? "bg-indigo-600/20 text-indigo-400 border-indigo-500/30"
                 : "text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-800"
             }`}
           >
-            <FileText size={12} />
-            Quick Ref
+            <FileText size={11} /> Quick Ref
           </button>
           <button
             onClick={() => onViewChange("glossary")}
-            className={`flex flex-col items-center gap-0.5 py-2 rounded-md text-[9px] font-semibold transition-all border ${
+            className={`flex items-center justify-center gap-1 py-2 rounded-md text-[10px] font-semibold transition-all border ${
               currentView === "glossary"
                 ? "bg-violet-600/20 text-violet-400 border-violet-500/30"
                 : "text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-800"
             }`}
           >
-            <BookOpen size={12} />
-            Glossary
-          </button>
-          <button
-            onClick={() => onViewChange("videos")}
-            className={`flex flex-col items-center gap-0.5 py-2 rounded-md text-[9px] font-semibold transition-all border ${
-              currentView === "videos"
-                ? "bg-red-600/20 text-red-400 border-red-500/30"
-                : "text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-800"
-            }`}
-          >
-            <Youtube size={12} />
-            Videos
+            <BookOpen size={11} /> Glossary
           </button>
         </div>
       </div>
