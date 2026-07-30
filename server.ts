@@ -6,7 +6,55 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { config as loadEnv } from "dotenv";
 import { createServer as createViteServer } from "vite";
 
+import fs from "fs";
+
 loadEnv({ path: [".env.local", ".env"] });
+
+// ─── PIN-based Training Access System ────────────────────────────────────────
+
+// 10 default PINs — override via ACCESS_PINS env var (comma-separated)
+const DEFAULT_PINS = ["4829", "7392", "1568", "9047", "3215", "6784", "2931", "8456", "5103", "7620"];
+
+function getAccessPins(): string[] {
+  return process.env.ACCESS_PINS ? process.env.ACCESS_PINS.split(",").map(p => p.trim()) : DEFAULT_PINS;
+}
+
+// In-memory progress store: { pin -> { name, progress, completedWorkflows } }
+const PROGRESS_DATA_FILE = path.join(process.cwd(), "data", "training-progress.json");
+
+interface TraineeRecord {
+  pin: string;
+  name: string;
+  joinedAt: string;
+  lastActiveAt: string;
+  progress: Record<string, unknown>;
+  completedWorkflows: string[];
+}
+
+type ProgressStore = Record<string, TraineeRecord>;
+
+function loadProgressStore(): ProgressStore {
+  try {
+    if (!fs.existsSync(path.join(process.cwd(), "data"))) {
+      fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
+    }
+    if (fs.existsSync(PROGRESS_DATA_FILE)) {
+      return JSON.parse(fs.readFileSync(PROGRESS_DATA_FILE, "utf-8")) as ProgressStore;
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveProgressStore(store: ProgressStore) {
+  try {
+    if (!fs.existsSync(path.join(process.cwd(), "data"))) {
+      fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
+    }
+    fs.writeFileSync(PROGRESS_DATA_FILE, JSON.stringify(store, null, 2));
+  } catch { /* ignore */ }
+}
+
+let progressStore: ProgressStore = loadProgressStore();
 
 // Global express setup
 const app = express();
@@ -396,6 +444,103 @@ Your output must contain:
     console.error("Error in refine-prompt:", err);
     res.status(500).json({ error: err.message || "An unexpected error occurred during execution." });
   }
+});
+
+// ─── PIN Training Auth Endpoints ─────────────────────────────────────────────
+
+// Verify PIN and register trainee
+app.post("/api/pin/verify", (req, res) => {
+  const { pin, name } = req.body as { pin: string; name?: string };
+  const pins = getAccessPins();
+
+  if (!pin || !pins.includes(pin.trim())) {
+    return res.status(401).json({ error: "Invalid PIN. Please check with your manager." });
+  }
+
+  const cleanPin = pin.trim();
+  if (!progressStore[cleanPin]) {
+    progressStore[cleanPin] = {
+      pin: cleanPin,
+      name: name?.trim() || `Trainee ${cleanPin}`,
+      joinedAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+      progress: {},
+      completedWorkflows: [],
+    };
+  } else {
+    progressStore[cleanPin].lastActiveAt = new Date().toISOString();
+    if (name?.trim()) progressStore[cleanPin].name = name.trim();
+  }
+  saveProgressStore(progressStore);
+
+  return res.json({
+    valid: true,
+    name: progressStore[cleanPin].name,
+    progress: progressStore[cleanPin].progress,
+    completedWorkflows: progressStore[cleanPin].completedWorkflows,
+  });
+});
+
+// Get trainee progress
+app.get("/api/progress/:pin", (req, res) => {
+  const { pin } = req.params;
+  const pins = getAccessPins();
+  if (!pins.includes(pin)) return res.status(401).json({ error: "Invalid PIN" });
+
+  const record = progressStore[pin];
+  return res.json({
+    progress: record?.progress ?? {},
+    completedWorkflows: record?.completedWorkflows ?? [],
+    name: record?.name ?? null,
+  });
+});
+
+// Save trainee progress
+app.post("/api/progress/:pin", (req, res) => {
+  const { pin } = req.params;
+  const pins = getAccessPins();
+  if (!pins.includes(pin)) return res.status(401).json({ error: "Invalid PIN" });
+
+  const { progress, completedWorkflows } = req.body as {
+    progress: Record<string, unknown>;
+    completedWorkflows: string[];
+  };
+
+  if (!progressStore[pin]) {
+    progressStore[pin] = {
+      pin,
+      name: `Trainee ${pin}`,
+      joinedAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+      progress: {},
+      completedWorkflows: [],
+    };
+  }
+
+  progressStore[pin].progress = progress;
+  progressStore[pin].completedWorkflows = completedWorkflows;
+  progressStore[pin].lastActiveAt = new Date().toISOString();
+  saveProgressStore(progressStore);
+
+  return res.json({ saved: true });
+});
+
+// Admin: list all PINs and trainee status (requires admin auth)
+app.get("/api/admin/trainees", requireAuth, (req, res) => {
+  const pins = getAccessPins();
+  const trainees = pins.map((pin, i) => {
+    const record = progressStore[pin];
+    return {
+      pin,
+      slot: i + 1,
+      name: record?.name ?? "Not yet activated",
+      joinedAt: record?.joinedAt ?? null,
+      lastActiveAt: record?.lastActiveAt ?? null,
+      completedWorkflows: record?.completedWorkflows?.length ?? 0,
+      totalWorkflowsStarted: Object.keys(record?.progress ?? {}).length,
+    };
+  });
+  return res.json({ pins, trainees });
 });
 
 // ─── Entrata AI Chat Endpoint ────────────────────────────────────────────────

@@ -16,8 +16,12 @@ import { MobileView } from "./components/entrata/MobileView";
 import { MockEntrataUI } from "./components/entrata/simulation/MockEntrataUI";
 import { VideoPanel } from "./components/entrata/VideoPanel";
 import { ChatAssistant } from "./components/entrata/ChatAssistant";
+import { PinLogin } from "./components/entrata/PinLogin";
+import { Certificate } from "./components/entrata/Certificate";
 
 const STORAGE_KEY = "entrata_training_progress";
+const PIN_KEY = "entrata_pin";
+const NAME_KEY = "entrata_name";
 
 function loadProgress(): Record<string, WorkflowProgress> {
   try {
@@ -33,6 +37,21 @@ function saveProgress(progress: Record<string, WorkflowProgress>) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
   } catch {
     // ignore storage errors
+  }
+}
+
+async function syncProgressToServer(pin: string, progress: Record<string, WorkflowProgress>) {
+  try {
+    const completedWorkflows = Object.entries(progress)
+      .filter(([, p]) => p.completedAt)
+      .map(([id]) => id);
+    await fetch(`/api/progress/${pin}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ progress, completedWorkflows }),
+    });
+  } catch {
+    // best-effort sync
   }
 }
 
@@ -277,9 +296,11 @@ interface DesktopHeaderProps {
   mode: AppMode;
   onModeToggle: () => void;
   selectedRole: RoleType;
+  traineeName: string;
+  onSignOut: () => void;
 }
 
-function DesktopHeader({ onSearchOpen, mode, onModeToggle, selectedRole }: DesktopHeaderProps) {
+function DesktopHeader({ onSearchOpen, mode, onModeToggle, selectedRole, traineeName, onSignOut }: DesktopHeaderProps) {
   const role = ROLES.find(r => r.value === selectedRole);
 
   return (
@@ -312,16 +333,24 @@ function DesktopHeader({ onSearchOpen, mode, onModeToggle, selectedRole }: Deskt
         </button>
       </div>
 
-      {/* Right: Mode Toggle + Role Badge */}
-      <div className="flex items-center gap-3">
-        {role && (
-          <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${role.bgColor} ${role.color}`}>
-            {selectedRole === "Leasing" ? <Users size={12} /> :
-             selectedRole === "Maintenance" ? <Wrench size={12} /> :
-             selectedRole === "Manager" ? <BarChart2 size={12} /> : <Star size={12} />}
-            {role.label}
-          </div>
-        )}
+        {/* Right: Mode Toggle + Role Badge */}
+        <div className="flex items-center gap-3">
+          {role && (
+            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${role.bgColor} ${role.color}`}>
+              {selectedRole === "Leasing" ? <Users size={12} /> :
+               selectedRole === "Maintenance" ? <Wrench size={12} /> :
+               selectedRole === "Manager" ? <BarChart2 size={12} /> : <Star size={12} />}
+              {role.label}
+            </div>
+          )}
+          {traineeName && (
+            <div className="flex items-center gap-2 border-l border-slate-800 pl-3">
+              <span className="text-[11px] text-slate-400 truncate max-w-24">{traineeName}</span>
+              <button onClick={onSignOut} title="Sign out" className="text-[10px] text-slate-600 hover:text-slate-300 font-semibold transition-colors">
+                Sign out
+              </button>
+            </div>
+          )}
 
         <div className="flex items-center gap-2 border-l border-slate-800 pl-3">
           <span className="text-[11px] text-slate-500">
@@ -359,6 +388,12 @@ function DesktopHeader({ onSearchOpen, mode, onModeToggle, selectedRole }: Deskt
 export default function App() {
   const isMobile = useIsMobile();
 
+  // PIN auth state
+  const [pin, setPin] = useState<string | null>(() => localStorage.getItem(PIN_KEY));
+  const [traineeName, setTraineeName] = useState<string>(() => localStorage.getItem(NAME_KEY) ?? "");
+  const [showCertificate, setShowCertificate] = useState<EntrataWorkflow | null>(null);
+  const [justCompletedWorkflowId, setJustCompletedWorkflowId] = useState<string | null>(null);
+
   // Persistent state
   const [progress, setProgress] = useState<Record<string, WorkflowProgress>>(loadProgress);
 
@@ -384,10 +419,37 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Persist progress to localStorage
+  // Persist progress to localStorage + sync to server
   useEffect(() => {
     saveProgress(progress);
-  }, [progress]);
+    if (pin) syncProgressToServer(pin, progress);
+  }, [progress, pin]);
+
+  // Handle PIN login success
+  function handlePinSuccess(newPin: string, name: string, serverProgress: Record<string, unknown>, _completedWorkflows: string[]) {
+    localStorage.setItem(PIN_KEY, newPin);
+    localStorage.setItem(NAME_KEY, name);
+    setPin(newPin);
+    setTraineeName(name);
+    // Merge server progress with local (server wins for completed)
+    if (Object.keys(serverProgress).length > 0) {
+      const merged = { ...loadProgress(), ...(serverProgress as Record<string, WorkflowProgress>) };
+      setProgress(merged);
+      saveProgress(merged);
+    }
+  }
+
+  function handleSignOut() {
+    localStorage.removeItem(PIN_KEY);
+    localStorage.removeItem(NAME_KEY);
+    setPin(null);
+    setTraineeName("");
+  }
+
+  // Show PIN login if not authenticated
+  if (!pin) {
+    return <PinLogin onSuccess={handlePinSuccess} />;
+  }
 
   const activeWorkflow: EntrataWorkflow | null = useMemo(
     () => ENTRATA_WORKFLOWS.find(w => w.id === activeWorkflowId) ?? null,
@@ -475,6 +537,11 @@ export default function App() {
       setCurrentStepIndex(nextIndex);
     }
     updateProgress(activeWorkflowId!, nextIndex, newCompleted);
+
+    // Trigger certificate when all steps done
+    if (newCompleted.length === activeWorkflow.steps.length) {
+      setTimeout(() => setShowCertificate(activeWorkflow), 600);
+    }
   }
 
   function handleNextStep() {
@@ -586,6 +653,16 @@ export default function App() {
 
         {/* AI Chat Assistant */}
         <ChatAssistant onNavigate={handleChatNavigate} />
+
+        {/* Certificate Modal */}
+        {showCertificate && (
+          <Certificate
+            workflow={showCertificate}
+            traineeName={traineeName}
+            completedAt={new Date().toISOString()}
+            onClose={() => setShowCertificate(null)}
+          />
+        )}
       </div>
     );
   }
@@ -600,6 +677,8 @@ export default function App() {
         mode={mode}
         onModeToggle={handleModeToggle}
         selectedRole={selectedRole}
+        traineeName={traineeName}
+        onSignOut={handleSignOut}
       />
 
       {/* 3-Column Layout */}
@@ -686,6 +765,16 @@ export default function App() {
 
       {/* AI Chat Assistant */}
       <ChatAssistant onNavigate={handleChatNavigate} />
+
+      {/* Certificate Modal */}
+      {showCertificate && (
+        <Certificate
+          workflow={showCertificate}
+          traineeName={traineeName}
+          completedAt={new Date().toISOString()}
+          onClose={() => setShowCertificate(null)}
+        />
+      )}
     </div>
   );
 }

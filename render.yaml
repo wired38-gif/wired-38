@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: entrata-training
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/server.cjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: ACCESS_PINS
+        value: 4829,7392,1568,9047,3215,6784,2931,8456,5103,7620
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+    disk:
+      name: training-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
