@@ -16,7 +16,6 @@ import { QuickReference } from "./components/entrata/QuickReference";
 import { MobileView } from "./components/entrata/MobileView";
 import { MockEntrataUI } from "./components/entrata/simulation/MockEntrataUI";
 import { VideoPanel } from "./components/entrata/VideoPanel";
-import { AIResearchFeed } from "./components/entrata/AIResearchFeed";
 import { ChatAssistant } from "./components/entrata/ChatAssistant";
 import { AccountSetup, AccountData } from "./components/entrata/AccountSetup";
 import { Certificate } from "./components/entrata/Certificate";
@@ -393,7 +392,7 @@ export default function App() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
   const [mode, setMode] = useState<AppMode>("learning");
-  const [currentView, setCurrentView] = useState<"workflow" | "reference" | "glossary" | "videos" | "research">("workflow");
+  const [currentView, setCurrentView] = useState<"workflow" | "reference" | "glossary" | "videos">("workflow");
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -469,7 +468,7 @@ export default function App() {
     handleWorkflowSelect(workflowId);
   }
 
-  function handleViewChange(view: "workflow" | "reference" | "glossary" | "videos" | "research") {
+  function handleViewChange(view: "workflow" | "reference" | "glossary" | "videos") {
     setCurrentView(view);
     if (view !== "workflow") setActiveWorkflowId(null);
   }
@@ -580,11 +579,7 @@ export default function App() {
         </MobileDrawer>
 
         {/* Mobile Content */}
-        {currentView === "research" ? (
-          <div className="h-[calc(100vh-57px)] overflow-hidden">
-            <AIResearchFeed />
-          </div>
-        ) : currentView === "reference" || currentView === "glossary" ? (
+        {currentView === "reference" || currentView === "glossary" ? (
           <div className="pb-6 overflow-y-auto h-[calc(100vh-57px)]">
             <QuickReference view={currentView as "reference" | "glossary"} selectedRole={selectedRole} />
           </div>
@@ -688,9 +683,7 @@ export default function App() {
 
         {/* CENTER: Simulation Workspace (50%) */}
         <div className="flex-1 overflow-hidden border-x border-slate-800">
-          {currentView === "research" ? (
-            <AIResearchFeed />
-          ) : currentView === "videos" ? (
+          {currentView === "videos" ? (
             <VideoPanel selectedRole={selectedRole} />
           ) : currentView === "workflow" ? (
             mode === "learning" && activeWorkflow ? (

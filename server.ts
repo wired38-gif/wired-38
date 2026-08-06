@@ -874,6 +874,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
+    // Both / and /optimizer are served by the same SPA index.html — React handles the routing
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });

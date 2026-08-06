@@ -1,10 +1,14 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+import TheOptimizerApp from "./TheOptimizerApp.tsx";
+import "./index.css";
 
-createRoot(document.getElementById('root')!).render(
+// Path-based routing: /optimizer → MYK.IO TheOptimizer, everything else → Entrata Training Hub
+const isOptimizer = window.location.pathname.startsWith("/optimizer");
+
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
-  </StrictMode>,
+    {isOptimizer ? <TheOptimizerApp /> : <App />}
+  </StrictMode>
 );
