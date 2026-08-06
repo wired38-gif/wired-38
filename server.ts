@@ -770,6 +770,11 @@ const AI_RESEARCH_TOPICS_SERVER = [
   "new model", "open-source llm", "prompt engineering", "ai cost", "free tier",
   "copilot", "claude", "gemini", "gpt", "llama", "mistral", "ai news",
   "ai tool", "ai release", "large language model",
+  // new: token-optimization + free-model topics
+  "openrouter", "google ai studio", "api credit", "token optimization",
+  "context caching", "prompt cache", "system prompt", "token budget",
+  "free api", "zero cost", "open source model", "local llm", "free model",
+  "mckay wrigley", "simon willison", "allie miller",
 ];
 
 function isArticleRelevant(article: ResearchArticle): boolean {
@@ -779,14 +784,23 @@ function isArticleRelevant(article: ResearchArticle): boolean {
 
 // Inline research sites config (mirrors src/data/researchSites.ts for server use)
 const SERVER_RESEARCH_SITES = [
-  { id: "bens-bites",      name: "Ben's Bites",          url: "https://www.bensbites.com",          rssUrl: "https://bensbites.beehiiv.com/feed" },
-  { id: "one-useful-thing", name: "One Useful Thing",     url: "https://www.oneusefulthing.org",      rssUrl: "https://www.oneusefulthing.org/feed" },
-  { id: "interconnects",   name: "Interconnects",         url: "https://www.interconnects.ai",        rssUrl: "https://www.interconnects.ai/feed" },
-  { id: "import-ai",       name: "Import AI",             url: "https://jack-clark.net",              rssUrl: "https://jack-clark.net/feed" },
-  { id: "ai-supremacy",    name: "AI Supremacy",          url: "https://aisupremacy.substack.com",    rssUrl: "https://aisupremacy.substack.com/feed" },
-  { id: "ms-ai-blog",      name: "Microsoft AI Blog",     url: "https://blogs.microsoft.com/ai",      rssUrl: "https://blogs.microsoft.com/ai/feed" },
-  { id: "openai-blog",     name: "OpenAI News",           url: "https://openai.com/news",             rssUrl: "https://openai.com/news/rss.xml" },
-  { id: "google-ai-blog",  name: "Google AI Blog",        url: "https://blog.google/technology/ai",   rssUrl: "https://blog.google/technology/ai/rss" },
+  // Substack newsletters
+  { id: "bens-bites",        name: "Ben's Bites",           url: "https://www.bensbites.com",                     rssUrl: "https://bensbites.beehiiv.com/feed" },
+  { id: "one-useful-thing",  name: "One Useful Thing",      url: "https://www.oneusefulthing.org",                rssUrl: "https://www.oneusefulthing.org/feed" },
+  { id: "interconnects",     name: "Interconnects",         url: "https://www.interconnects.ai",                  rssUrl: "https://www.interconnects.ai/feed" },
+  { id: "import-ai",         name: "Import AI",             url: "https://jack-clark.net",                        rssUrl: "https://jack-clark.net/feed" },
+  { id: "ai-supremacy",      name: "AI Supremacy",          url: "https://aisupremacy.substack.com",              rssUrl: "https://aisupremacy.substack.com/feed" },
+  // Token-optimization expert blogs
+  { id: "simon-willison",    name: "Simon Willison's Blog", url: "https://simonwillison.net",                     rssUrl: "https://simonwillison.net/atom/everything/" },
+  { id: "openrouter-blog",   name: "OpenRouter Blog",       url: "https://openrouter.ai/blog",                    rssUrl: "https://openrouter.ai/blog/rss.xml" },
+  // Community feeds
+  { id: "hn-ai",             name: "Hacker News — AI",      url: "https://news.ycombinator.com",                  rssUrl: "https://hnrss.org/newest?q=AI+tokens+OR+free+API+OR+open+source+LLM+OR+prompt&count=20" },
+  { id: "reddit-localllama", name: "r/LocalLLaMA",          url: "https://www.reddit.com/r/LocalLLaMA",           rssUrl: "https://www.reddit.com/r/LocalLLaMA/.rss?limit=15" },
+  { id: "reddit-prompt",     name: "r/PromptEngineering",   url: "https://www.reddit.com/r/PromptEngineering",    rssUrl: "https://www.reddit.com/r/PromptEngineering/.rss?limit=15" },
+  // Official tech blogs
+  { id: "ms-ai-blog",        name: "Microsoft AI Blog",     url: "https://blogs.microsoft.com/ai",                rssUrl: "https://blogs.microsoft.com/ai/feed" },
+  { id: "openai-blog",       name: "OpenAI News",           url: "https://openai.com/news",                       rssUrl: "https://openai.com/news/rss.xml" },
+  { id: "google-ai-blog",    name: "Google AI Blog",        url: "https://blog.google/technology/ai",             rssUrl: "https://blog.google/technology/ai/rss" },
 ];
 
 // In-memory cache: articles per site, keyed by siteId, with a TTL
