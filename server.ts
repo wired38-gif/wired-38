@@ -5,6 +5,7 @@ import type { NextFunction, Request, Response } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
 import { config as loadEnv } from "dotenv";
 import { createServer as createViteServer } from "vite";
+import { WorkOS } from "@workos-inc/node";
 
 import fs from "fs";
 
@@ -670,6 +671,113 @@ app.post("/api/entrata-chat", async (req, res) => {
   } catch (err: any) {
     console.error("Entrata chat error:", err);
     res.status(500).json({ error: err.message || "Chat service error." });
+  }
+});
+
+// ─── TheOptimizer / research.mykbrands.com Auth ──────────────────────────────
+
+// Lazy WorkOS client — only initialised when env vars are present
+let workosClient: WorkOS | null = null;
+function getWorkOS(): WorkOS | null {
+  if (workosClient) return workosClient;
+  const apiKey = process.env.WORKOS_API_KEY;
+  if (!apiKey) return null;
+  workosClient = new WorkOS(apiKey);
+  return workosClient;
+}
+
+function isWorkOSConfigured(): boolean {
+  return Boolean(process.env.WORKOS_API_KEY && process.env.WORKOS_CLIENT_ID);
+}
+
+/** Return the correct app base URL for OAuth callbacks */
+function getAppBaseUrl(req: Request): string {
+  // Prefer explicit env var (set in production to https://research.mykbrands.com)
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  const proto = req.secure || req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
+  return `${proto}://${req.headers.host}`;
+}
+
+// Check which optimizer auth methods are available
+app.get("/api/optimizer/config", (_req, res) => {
+  res.json({
+    pinEnabled: true,
+    workosEnabled: isWorkOSConfigured(),
+  });
+});
+
+// PIN login for TheOptimizer (PIN stored in OPTIMIZER_PIN env var, default 8718)
+app.post("/api/optimizer/pin-login", (req, res) => {
+  const { pin } = req.body as { pin: string };
+  const correctPin = (process.env.OPTIMIZER_PIN ?? "8718").trim();
+
+  if (!pin || pin.trim() !== correctPin) {
+    res.status(401).json({ error: "Incorrect PIN. Please try again." });
+    return;
+  }
+
+  // Reuse the same session mechanism as the admin login
+  if (!isAuthConfigured()) {
+    // Auth not fully configured — issue a simple signed token using the PIN as secret
+    const payload = { sub: "optimizer", exp: Date.now() + SESSION_TTL_SECONDS * 1000 };
+    const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    const sig = crypto.createHmac("sha256", correctPin).update(encoded).digest("base64url");
+    const token = `${encoded}.${sig}`;
+    res.setHeader("Set-Cookie", buildSessionCookie(token, req));
+  } else {
+    const token = createSessionToken("optimizer-pin");
+    res.setHeader("Set-Cookie", buildSessionCookie(token, req));
+  }
+
+  res.json({ authenticated: true, method: "pin" });
+});
+
+// WorkOS: get authorization URL (redirect user to WorkOS login)
+app.get("/api/optimizer/workos/auth", (req, res) => {
+  const wos = getWorkOS();
+  if (!wos) {
+    res.status(503).json({ error: "WorkOS is not configured on this server." });
+    return;
+  }
+
+  const redirectUri = `${getAppBaseUrl(req)}/api/optimizer/workos/callback`;
+  const authUrl = wos.userManagement.getAuthorizationUrl({
+    clientId: process.env.WORKOS_CLIENT_ID!,
+    redirectUri,
+    provider: "authkit",
+  });
+
+  res.json({ authUrl });
+});
+
+// WorkOS: OAuth callback — exchange code for session
+app.get("/api/optimizer/workos/callback", async (req, res) => {
+  const wos = getWorkOS();
+  if (!wos) {
+    res.status(503).send("WorkOS is not configured.");
+    return;
+  }
+
+  const code = req.query.code as string;
+  if (!code) {
+    res.status(400).send("Missing authorization code.");
+    return;
+  }
+
+  try {
+    const { user } = await wos.userManagement.authenticateWithCode({
+      clientId: process.env.WORKOS_CLIENT_ID!,
+      code,
+    });
+
+    console.log(`WorkOS login: ${user.email}`);
+    const token = createSessionToken(user.email);
+    res.setHeader("Set-Cookie", buildSessionCookie(token, req));
+    // Redirect to the optimizer UI after successful login
+    res.redirect("/optimizer");
+  } catch (err: any) {
+    console.error("WorkOS callback error:", err);
+    res.redirect(`/optimizer?auth_error=${encodeURIComponent(err.message || "WorkOS login failed")}`);
   }
 });
 

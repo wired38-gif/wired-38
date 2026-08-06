@@ -64,88 +64,159 @@ function CopyButton({ text }: { text: string }) {
 
 // ─── Sub-views ────────────────────────────────────────────────────────────────
 
-/** Admin login form for TheOptimizer API access */
+interface OptimizerConfig {
+  pinEnabled: boolean;
+  workosEnabled: boolean;
+}
+
+/** PIN + WorkOS login panel for research.mykbrands.com */
 function LoginPanel({ onLogin }: { onLogin: () => void }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [config, setConfig] = useState<OptimizerConfig>({ pinEnabled: true, workosEnabled: false });
+  const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
+  const [workosLoading, setWorkosLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
+  // Check for WorkOS error from OAuth redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authError = params.get("auth_error");
+    if (authError) setError(authError);
+  }, []);
+
+  // Load server config (which auth methods are available)
+  useEffect(() => {
+    fetch("/api/optimizer/config")
+      .then(r => r.json())
+      .then(d => setConfig(d as OptimizerConfig))
+      .catch(() => {});
+  }, []);
+
+  async function handlePinSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (pin.length < 4) return;
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/login", {
+      const res = await fetch("/api/optimizer/pin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ pin }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Login failed");
+      if (!res.ok) throw new Error(data.error || "Incorrect PIN");
       onLogin();
     } catch (err: any) {
       setError(err.message);
+      setPin("");
     } finally {
       setLoading(false);
     }
   }
 
+  async function handleWorkOSLogin() {
+    setWorkosLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/optimizer/workos/auth");
+      const { authUrl, error: err } = await res.json() as { authUrl?: string; error?: string };
+      if (err) throw new Error(err);
+      if (authUrl) window.location.href = authUrl;
+    } catch (err: any) {
+      setError(err.message || "WorkOS login unavailable");
+      setWorkosLoading(false);
+    }
+  }
+
+  // PIN digit-box entry — auto-submit when 4 digits entered
+  function handlePinChange(value: string) {
+    const digits = value.replace(/\D/g, "").slice(0, 4);
+    setPin(digits);
+    setError("");
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-xs">
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-3">
-            <Zap size={28} className="text-indigo-400" />
-            <span className="text-3xl font-black tracking-tight text-white">MYK<span className="text-indigo-400">.IO</span></span>
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2.5 mb-2">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center">
+              <Zap size={22} className="text-indigo-400" />
+            </div>
+            <span className="text-3xl font-black tracking-tight text-white">
+              MYK<span className="text-indigo-400">.IO</span>
+            </span>
           </div>
-          <p className="text-sm text-slate-400">TheOptimizer — AI Prompt Intelligence</p>
+          <p className="text-sm text-slate-500">AI Research &amp; Prompt Optimizer</p>
+          <p className="text-[11px] text-slate-600 mt-1">research.mykbrands.com</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* PIN form */}
+        <form onSubmit={handlePinSubmit} className="space-y-5">
           <div>
-            <label className="block text-[11px] text-slate-500 uppercase tracking-wider mb-1.5 font-semibold">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
-              placeholder="admin"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] text-slate-500 uppercase tracking-wider mb-1.5 font-semibold">Password</label>
+            <label className="block text-[11px] text-slate-500 uppercase tracking-wider mb-3 font-semibold text-center">
+              Enter Access PIN
+            </label>
+            {/* Large PIN input styled as a single field */}
             <input
               type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
-              placeholder="••••••••"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={pin}
+              onChange={e => handlePinChange(e.target.value)}
+              placeholder="• • • •"
+              autoFocus
+              className="w-full bg-slate-900 border-2 border-slate-700 focus:border-indigo-500 rounded-2xl px-4 py-4 text-2xl text-center text-white tracking-[0.5em] placeholder:tracking-[0.5em] placeholder:text-slate-700 focus:outline-none transition-colors font-mono"
             />
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 text-sm text-red-400 bg-red-950/30 border border-red-900/50 rounded-xl px-3 py-2">
-              <AlertCircle size={14} />
+            <div className="flex items-center gap-2 text-sm text-red-400 bg-red-950/30 border border-red-900/50 rounded-xl px-3 py-2.5">
+              <AlertCircle size={14} className="flex-shrink-0" />
               {error}
             </div>
           )}
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-all"
+            disabled={loading || pin.length < 4}
+            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-2xl transition-all text-sm"
           >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />}
-            {loading ? "Signing in…" : "Sign In"}
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+            {loading ? "Verifying…" : "Unlock"}
           </button>
         </form>
 
-        <p className="text-center text-[11px] text-slate-600 mt-6">
-          Requires ADMIN_USERNAME + ADMIN_PASSWORD environment variables.
+        {/* WorkOS SSO divider (only shown if configured on server) */}
+        {config.workosEnabled && (
+          <>
+            <div className="flex items-center gap-3 my-5">
+              <div className="flex-1 h-px bg-slate-800" />
+              <span className="text-[11px] text-slate-600">or</span>
+              <div className="flex-1 h-px bg-slate-800" />
+            </div>
+
+            <button
+              onClick={handleWorkOSLogin}
+              disabled={workosLoading}
+              className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-300 font-semibold py-3 rounded-2xl transition-all text-sm disabled:opacity-60"
+            >
+              {workosLoading ? <Loader2 size={16} className="animate-spin" /> : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-white">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" fill="currentColor"/>
+                </svg>
+              )}
+              Sign in with WorkOS SSO
+            </button>
+          </>
+        )}
+
+        <p className="text-center text-[10px] text-slate-700 mt-6">
+          {config.workosEnabled
+            ? "PIN or WorkOS SSO access · MYK Brands"
+            : "PIN-protected · MYK Brands · research.mykbrands.com"}
         </p>
       </div>
     </div>
