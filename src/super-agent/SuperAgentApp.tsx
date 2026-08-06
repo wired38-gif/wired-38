@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Bot, MessageSquare, Database, Settings, Zap, Menu, X,
-  ChevronLeft, Plus, Wifi, WifiOff, Brain
+  ChevronLeft, Plus, Wifi, WifiOff, Brain, Lock, Eye, EyeOff, LogOut
 } from "lucide-react";
 import type { SAStatus, SAConversationSummary, ActiveView } from "./types";
 import { ChatPanel } from "./components/ChatPanel";
@@ -20,8 +20,102 @@ const MODEL_OPTIONS = [
   { value: "ollama/phi3",           label: "Phi-3 Mini (Local)",  badge: "Free",    color: "text-emerald-400" },
 ];
 
+function PinGate({ onSuccess }: { onSuccess: () => void }) {
+  const [pin, setPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pin.trim()) return;
+    setLoading(true);
+    setError("");
+    try {
+      const r = await fetch("/api/sa/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pin.trim() }),
+      });
+      const data = await r.json() as { authenticated?: boolean; error?: string };
+      if (data.authenticated) {
+        onSuccess();
+      } else {
+        setError(data.error || "Incorrect PIN.");
+        setPin("");
+      }
+    } catch {
+      setError("Connection error. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="h-screen bg-slate-950 flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-violet-900/30">
+            <Brain size={28} className="text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-white">MYK Super Agent</h1>
+          <p className="text-sm text-slate-500 mt-1">Designs by Myk LLC</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+              <Lock size={10} className="inline mr-1" />
+              Enter PIN
+            </label>
+            <div className="relative">
+              <input
+                type={showPin ? "text" : "password"}
+                value={pin}
+                onChange={e => setPin(e.target.value)}
+                placeholder="••••••••"
+                autoFocus
+                className="w-full bg-slate-800 border border-slate-700 focus:border-violet-500 rounded-xl px-4 py-3 text-white text-lg tracking-widest placeholder-slate-700 focus:outline-none transition-colors pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPin(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-400 transition-colors"
+              >
+                {showPin ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-400 text-center">{error}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={!pin.trim() || loading}
+            className="w-full py-3 bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Lock size={14} />
+            )}
+            {loading ? "Verifying…" : "Unlock"}
+          </button>
+        </form>
+
+        <p className="text-center text-[11px] text-slate-700 mt-6">
+          Session lasts 30 days across all your devices.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function SuperAgentApp() {
   const [status, setStatus] = useState<SAStatus | null>(null);
+  const [pinGranted, setPinGranted] = useState(false);
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<SAConversationSummary[]>([]);
@@ -51,10 +145,28 @@ export default function SuperAgentApp() {
   }, []);
 
   useEffect(() => {
-    Promise.all([fetchStatus(), fetchConversations()]).finally(() => setLoading(false));
+    const init = async () => {
+      try {
+        const r = await fetch("/api/sa/status");
+        const data = await r.json() as SAStatus;
+        setStatus(data);
+        // Auto-unlock if no PIN required, or cookie already valid
+        if (!data.pinRequired || data.saAuthenticated) {
+          setPinGranted(true);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
     const interval = setInterval(fetchStatus, 30000);
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchConversations]);
+  }, [fetchStatus]);
+
+  // Load conversations once pin is granted
+  useEffect(() => {
+    if (pinGranted) fetchConversations();
+  }, [pinGranted, fetchConversations]);
 
   const createConversation = useCallback(async () => {
     const r = await fetch("/api/sa/conversations", {
@@ -86,6 +198,13 @@ export default function SuperAgentApp() {
     return true;
   });
 
+  const handleLogout = useCallback(async () => {
+    await fetch("/api/sa/logout", { method: "POST" });
+    setPinGranted(false);
+    setConversations([]);
+    setActiveConversationId(null);
+  }, []);
+
   if (loading) {
     return (
       <div className="h-screen bg-slate-950 flex items-center justify-center">
@@ -95,6 +214,11 @@ export default function SuperAgentApp() {
         </div>
       </div>
     );
+  }
+
+  // Show PIN gate if PIN is required and not yet authenticated
+  if (status?.pinRequired && !pinGranted) {
+    return <PinGate onSuccess={() => { setPinGranted(true); fetchConversations(); }} />;
   }
 
   return (
@@ -211,6 +335,15 @@ export default function SuperAgentApp() {
             <MessageSquare size={9} className="ml-auto" />
             <span>{status?.conversationCount ?? 0} convos</span>
           </div>
+          {status?.pinRequired && (
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-1.5 justify-center text-[10px] text-slate-700 hover:text-slate-400 py-1 transition-colors"
+            >
+              <LogOut size={9} />
+              Lock / Sign out
+            </button>
+          )}
         </div>
       </aside>
 

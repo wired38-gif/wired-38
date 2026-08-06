@@ -54,6 +54,8 @@ export interface SAStatus {
   geminiConfigured: boolean;
   authConfigured: boolean;
   authenticated: boolean;
+  saAuthenticated: boolean;
+  pinRequired: boolean;
   ollama: {
     available: boolean;
     models: string[];

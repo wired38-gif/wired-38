@@ -867,23 +867,114 @@ You help MYK with:
 When you have CONTEXT from the knowledge base, reference it naturally and build on it.
 Be direct, smart, and strategic. Speak as a trusted advisor who knows MYK's entire portfolio.`;
 
+// ── SA Session Auth ───────────────────────────────────────────────────────────
+
+const SA_SESSION_COOKIE = "myk_sa_session";
+const SA_SESSION_TTL = 30 * 24 * 60 * 60; // 30 days
+
+function getSAPin(): string | undefined {
+  return process.env.SA_PIN;
+}
+
+function isSAPinConfigured(): boolean {
+  return !!getSAPin();
+}
+
+function createSASessionToken(): string {
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + SA_SESSION_TTL * 1000 })).toString("base64url");
+  const sig = crypto.createHmac("sha256", getAuthSecret() || "sa-default-secret").update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+function verifySASessionToken(token: string | undefined): boolean {
+  if (!token) return false;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return false;
+  const expectedSig = crypto.createHmac("sha256", getAuthSecret() || "sa-default-secret").update(payload).digest("base64url");
+  if (!constantTimeEqual(sig, expectedSig)) return false;
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8")) as { exp: number };
+    return data.exp > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function isSAAuthenticated(req: Request): boolean {
+  // If no PIN is configured, SA is open to anyone on the server
+  if (!isSAPinConfigured()) return true;
+  const cookies = parseCookies(req.headers.cookie);
+  return verifySASessionToken(cookies[SA_SESSION_COOKIE]);
+}
+
+function buildSACookie(token: string, req: Request): string {
+  const secure = req.secure || process.env.NODE_ENV === "production";
+  const parts = [
+    `${SA_SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${SA_SESSION_TTL}`,
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+function requireSAAuth(req: Request, res: Response, next: NextFunction) {
+  if (!isSAAuthenticated(req)) {
+    res.status(401).json({ error: "PIN required", pinRequired: true });
+    return;
+  }
+  next();
+}
+
+// SA PIN login
+app.post("/api/sa/login", (req, res) => {
+  const { pin } = req.body as { pin: string };
+  const configured = getSAPin();
+
+  if (!configured) {
+    // No PIN set — open access
+    res.json({ authenticated: true, open: true });
+    return;
+  }
+
+  if (!pin || !constantTimeEqual(String(pin).trim(), configured)) {
+    res.status(401).json({ error: "Incorrect PIN." });
+    return;
+  }
+
+  const token = createSASessionToken();
+  res.setHeader("Set-Cookie", buildSACookie(token, req));
+  res.json({ authenticated: true });
+});
+
+// SA logout
+app.post("/api/sa/logout", (req, res) => {
+  res.setHeader("Set-Cookie", `${SA_SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+  res.json({ authenticated: false });
+});
+
 // ── SA API Routes ─────────────────────────────────────────────────────────────
 
-// Status: Ollama + config check
+// Status: Ollama + config check (public — needed for PIN gate to know if pin is required)
 app.get("/api/sa/status", async (req, res) => {
   const ollama = await checkOllama();
+  const saAuthenticated = isSAAuthenticated(req);
   res.json({
     geminiConfigured: !!process.env.GEMINI_API_KEY,
     authConfigured: isAuthConfigured(),
     authenticated: isAuthenticated(req),
+    saAuthenticated,
+    pinRequired: isSAPinConfigured(),
     ollama,
-    kbSize: loadAllKBEntries().length,
-    conversationCount: loadAllConversations().length,
+    kbSize: saAuthenticated ? loadAllKBEntries().length : 0,
+    conversationCount: saAuthenticated ? loadAllConversations().length : 0,
   });
 });
 
 // List conversations
-app.get("/api/sa/conversations", (req, res) => {
+app.get("/api/sa/conversations", requireSAAuth, (req, res) => {
   const conversations = loadAllConversations().map(c => ({
     id: c.id,
     title: c.title,
@@ -896,7 +987,7 @@ app.get("/api/sa/conversations", (req, res) => {
 });
 
 // Create conversation
-app.post("/api/sa/conversations", (req, res) => {
+app.post("/api/sa/conversations", requireSAAuth, (req, res) => {
   const { title } = req.body as { title?: string };
   const conv: SAConversation = {
     id: crypto.randomUUID(),
@@ -910,20 +1001,20 @@ app.post("/api/sa/conversations", (req, res) => {
 });
 
 // Get single conversation
-app.get("/api/sa/conversations/:id", (req, res) => {
+app.get("/api/sa/conversations/:id", requireSAAuth, (req, res) => {
   const conv = loadConversation(req.params.id);
   if (!conv) return res.status(404).json({ error: "Conversation not found" });
   res.json(conv);
 });
 
 // Delete conversation
-app.delete("/api/sa/conversations/:id", (req, res) => {
+app.delete("/api/sa/conversations/:id", requireSAAuth, (req, res) => {
   deleteConversation(req.params.id);
   res.json({ deleted: true });
 });
 
 // Send message to Super Agent (main chat endpoint)
-app.post("/api/sa/conversations/:id/messages", async (req, res) => {
+app.post("/api/sa/conversations/:id/messages", requireSAAuth, async (req, res) => {
   const { message, model: requestedModel } = req.body as { message: string; model?: string };
   if (!message) return res.status(400).json({ error: "Message required" });
 
@@ -1016,13 +1107,13 @@ app.post("/api/sa/conversations/:id/messages", async (req, res) => {
 // ── Knowledge Base Routes ─────────────────────────────────────────────────────
 
 // List KB entries
-app.get("/api/sa/kb", (req, res) => {
+app.get("/api/sa/kb", requireSAAuth, (req, res) => {
   const entries = loadAllKBEntries();
   res.json({ entries, total: entries.length });
 });
 
 // Search KB
-app.post("/api/sa/kb/search", (req, res) => {
+app.post("/api/sa/kb/search", requireSAAuth, (req, res) => {
   const { query, limit } = req.body as { query: string; limit?: number };
   if (!query) return res.status(400).json({ error: "Query required" });
   const entries = loadAllKBEntries();
@@ -1031,7 +1122,7 @@ app.post("/api/sa/kb/search", (req, res) => {
 });
 
 // Add KB entry
-app.post("/api/sa/kb", (req, res) => {
+app.post("/api/sa/kb", requireSAAuth, (req, res) => {
   const { title, content, tags, source } = req.body as Partial<KBEntry>;
   if (!title || !content) return res.status(400).json({ error: "title and content required" });
 
@@ -1049,7 +1140,7 @@ app.post("/api/sa/kb", (req, res) => {
 });
 
 // Update KB entry
-app.put("/api/sa/kb/:id", (req, res) => {
+app.put("/api/sa/kb/:id", requireSAAuth, (req, res) => {
   const { title, content, tags } = req.body as Partial<KBEntry>;
   const filePath = path.join(SA_KB_DIR, `${req.params.id}.json`);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Entry not found" });
@@ -1067,13 +1158,13 @@ app.put("/api/sa/kb/:id", (req, res) => {
 });
 
 // Delete KB entry
-app.delete("/api/sa/kb/:id", (req, res) => {
+app.delete("/api/sa/kb/:id", requireSAAuth, (req, res) => {
   deleteKBEntry(req.params.id);
   res.json({ deleted: true });
 });
 
 // Import Cursor chat export (paste raw JSON or text)
-app.post("/api/sa/kb/import-cursor-chat", (req, res) => {
+app.post("/api/sa/kb/import-cursor-chat", requireSAAuth, (req, res) => {
   const { rawText, title } = req.body as { rawText: string; title?: string };
   if (!rawText) return res.status(400).json({ error: "rawText required" });
 
@@ -1124,7 +1215,7 @@ app.post("/api/sa/kb/import-cursor-chat", (req, res) => {
 
 // ── Prompt Optimizer ──────────────────────────────────────────────────────────
 
-app.post("/api/sa/optimize-prompt", async (req, res) => {
+app.post("/api/sa/optimize-prompt", requireSAAuth, async (req, res) => {
   const { rawPrompt } = req.body as { rawPrompt: string };
   if (!rawPrompt) return res.status(400).json({ error: "rawPrompt required" });
 
@@ -1285,13 +1376,13 @@ Return JSON:
 });
 
 // Ollama proxy: check status + list models
-app.get("/api/sa/local-models", async (req, res) => {
+app.get("/api/sa/local-models", requireSAAuth, async (req, res) => {
   const result = await checkOllama();
   res.json(result);
 });
 
 // Pull/run an Ollama model (triggers download)
-app.post("/api/sa/local-models/pull", async (req, res) => {
+app.post("/api/sa/local-models/pull", requireSAAuth, async (req, res) => {
   const { model } = req.body as { model: string };
   if (!model) return res.status(400).json({ error: "model required" });
   const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
