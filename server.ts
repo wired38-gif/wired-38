@@ -673,6 +673,181 @@ app.post("/api/entrata-chat", async (req, res) => {
   }
 });
 
+// ─── AI Research Feed Endpoint ────────────────────────────────────────────────
+
+interface ResearchArticle {
+  id: string;
+  title: string;
+  url: string;
+  publishedAt: string;
+  summary: string;
+  source: string;
+  sourceUrl: string;
+  category: string;
+  tags: string[];
+  relevant: boolean;
+}
+
+interface FetchedFeed {
+  siteId: string;
+  name: string;
+  articles: ResearchArticle[];
+  error?: string;
+}
+
+// Simple RSS/Atom XML parser — extracts <item> or <entry> elements
+function parseRssFeed(xml: string, siteId: string, siteName: string, siteUrl: string): ResearchArticle[] {
+  const articles: ResearchArticle[] = [];
+
+  // Support both RSS <item> and Atom <entry>
+  const itemPattern = /<(?:item|entry)[\s>]([\s\S]*?)<\/(?:item|entry)>/g;
+  let match: RegExpExecArray | null;
+  let count = 0;
+
+  while ((match = itemPattern.exec(xml)) !== null && count < 10) {
+    const block = match[1];
+
+    const title = (/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/.exec(block)?.[1] ?? "")
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").trim();
+
+    const link =
+      /<link[^>]*href="([^"]+)"/.exec(block)?.[1] ??
+      /<link[^>]*>(https?:\/\/[^\s<]+)<\/link>/.exec(block)?.[1] ?? "";
+
+    const pubDate =
+      /<pubDate>([\s\S]*?)<\/pubDate>/.exec(block)?.[1] ??
+      /<published>([\s\S]*?)<\/published>/.exec(block)?.[1] ??
+      /<updated>([\s\S]*?)<\/updated>/.exec(block)?.[1] ?? "";
+
+    const description =
+      (/<description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/.exec(block)?.[1] ??
+       /<summary[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/summary>/.exec(block)?.[1] ?? "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").trim()
+        .slice(0, 500);
+
+    if (!title || !link) continue;
+
+    articles.push({
+      id: `${siteId}-${count}`,
+      title,
+      url: link,
+      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+      summary: description,
+      source: siteName,
+      sourceUrl: siteUrl,
+      category: "substack",
+      tags: [],
+      relevant: true,
+    });
+
+    count++;
+  }
+
+  return articles;
+}
+
+// Fetch RSS feed with timeout
+async function fetchFeed(rssUrl: string): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(rssUrl, {
+      signal: controller.signal,
+      headers: { "User-Agent": "MYK.IO-ResearchBot/1.0 (+https://myk-online.com)" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// AI_RESEARCH_TOPICS for relevance filtering
+const AI_RESEARCH_TOPICS_SERVER = [
+  "ai token", "token pricing", "free ai", "microsoft mai", "mai-code", "mai-1",
+  "new model", "open-source llm", "prompt engineering", "ai cost", "free tier",
+  "copilot", "claude", "gemini", "gpt", "llama", "mistral", "ai news",
+  "ai tool", "ai release", "large language model",
+];
+
+function isArticleRelevant(article: ResearchArticle): boolean {
+  const text = (article.title + " " + article.summary).toLowerCase();
+  return AI_RESEARCH_TOPICS_SERVER.some(t => text.includes(t));
+}
+
+// Inline research sites config (mirrors src/data/researchSites.ts for server use)
+const SERVER_RESEARCH_SITES = [
+  { id: "bens-bites",      name: "Ben's Bites",          url: "https://www.bensbites.com",          rssUrl: "https://bensbites.beehiiv.com/feed" },
+  { id: "one-useful-thing", name: "One Useful Thing",     url: "https://www.oneusefulthing.org",      rssUrl: "https://www.oneusefulthing.org/feed" },
+  { id: "interconnects",   name: "Interconnects",         url: "https://www.interconnects.ai",        rssUrl: "https://www.interconnects.ai/feed" },
+  { id: "import-ai",       name: "Import AI",             url: "https://jack-clark.net",              rssUrl: "https://jack-clark.net/feed" },
+  { id: "ai-supremacy",    name: "AI Supremacy",          url: "https://aisupremacy.substack.com",    rssUrl: "https://aisupremacy.substack.com/feed" },
+  { id: "ms-ai-blog",      name: "Microsoft AI Blog",     url: "https://blogs.microsoft.com/ai",      rssUrl: "https://blogs.microsoft.com/ai/feed" },
+  { id: "openai-blog",     name: "OpenAI News",           url: "https://openai.com/news",             rssUrl: "https://openai.com/news/rss.xml" },
+  { id: "google-ai-blog",  name: "Google AI Blog",        url: "https://blog.google/technology/ai",   rssUrl: "https://blog.google/technology/ai/rss" },
+];
+
+// In-memory cache: articles per site, keyed by siteId, with a TTL
+const feedCache: Map<string, { articles: ResearchArticle[]; fetchedAt: number }> = new Map();
+const FEED_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+app.get("/api/ai-research", async (req, res) => {
+  try {
+    const forceRefresh = req.query.refresh === "true";
+    const now = Date.now();
+
+    // Fetch all configured feeds in parallel
+    const feedPromises = SERVER_RESEARCH_SITES.map(async (site) => {
+      const cached = feedCache.get(site.id);
+      if (!forceRefresh && cached && now - cached.fetchedAt < FEED_CACHE_TTL) {
+        return { siteId: site.id, name: site.name, articles: cached.articles } as FetchedFeed;
+      }
+
+      try {
+        const xml = await fetchFeed(site.rssUrl);
+        const articles = parseRssFeed(xml, site.id, site.name, site.url);
+        feedCache.set(site.id, { articles, fetchedAt: now });
+        return { siteId: site.id, name: site.name, articles } as FetchedFeed;
+      } catch (err: any) {
+        const cached = feedCache.get(site.id);
+        if (cached) return { siteId: site.id, name: site.name, articles: cached.articles } as FetchedFeed;
+        return { siteId: site.id, name: site.name, articles: [], error: err.message } as FetchedFeed;
+      }
+    });
+
+    const feeds = await Promise.all(feedPromises);
+
+    // Flatten, mark relevance, sort by date
+    let allArticles: ResearchArticle[] = feeds.flatMap(f => f.articles);
+    allArticles = allArticles.map(a => ({ ...a, relevant: isArticleRelevant(a) }));
+    allArticles.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+
+    const relevant = allArticles.filter(a => a.relevant);
+    const other    = allArticles.filter(a => !a.relevant);
+
+    const errors = feeds.filter(f => f.error).map(f => ({ site: f.name, error: f.error }));
+
+    res.json({
+      articles: [...relevant, ...other].slice(0, 40),
+      relevantCount: relevant.length,
+      totalCount: allArticles.length,
+      sources: SERVER_RESEARCH_SITES.map(s => ({ id: s.id, name: s.name, url: s.url })),
+      fetchedAt: new Date().toISOString(),
+      errors: errors.length ? errors : undefined,
+    });
+  } catch (err: any) {
+    console.error("AI research feed error:", err);
+    res.status(500).json({ error: err.message || "Failed to fetch research feed." });
+  }
+});
+
+// Return the configured research sites list
+app.get("/api/ai-research/sites", (_req, res) => {
+  res.json({ sites: SERVER_RESEARCH_SITES });
+});
+
 // Setup development or production server modes
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
