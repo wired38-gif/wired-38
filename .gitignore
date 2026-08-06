@@ -7,5 +7,10 @@ coverage/
 .env*
 !.env.example
 
+# Runtime data — user accounts, conversations, knowledge base
+data/accounts.json
+data/super-agent/conversations/
+data/super-agent/kb/
+
 create_and_push_repo.ts
 get_github_info.ts
