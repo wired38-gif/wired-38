@@ -21,9 +21,10 @@ interface PromptOptimizerState {
 }
 
 function ModelBadge({ model }: { model: string }) {
-  const label = model.startsWith("ollama/")
-    ? `🖥 ${model.replace("ollama/", "")}`
-    : model.replace("gemini-", "✦ gemini-");
+  let label: string;
+  if (model.startsWith("ollama/")) label = `🖥 ${model.replace("ollama/", "")}`;
+  else if (model === "apple/foundation") label = " Apple Intelligence";
+  else label = model.replace("gemini-", "✦ gemini-");
   return (
     <span className="text-[10px] text-slate-500 font-mono">{label}</span>
   );
@@ -440,6 +441,9 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
           </div>
           <p className="text-[10px] text-slate-700 text-center mt-1">
             MYK Super Agent · Designs by Myk LLC · RAG-powered memory
+            {typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) && (
+              <span className="ml-1 text-slate-800">· Long-press for Apple Writing Tools</span>
+            )}
           </p>
         </div>
       </div>

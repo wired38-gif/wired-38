@@ -10,14 +10,15 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { ConversationSidebar } from "./components/ConversationSidebar";
 
 const MODEL_OPTIONS = [
-  { value: "gemini-2.0-flash",      label: "Gemini 2.0 Flash",    badge: "Fast",    color: "text-blue-400" },
-  { value: "gemini-2.5-flash",      label: "Gemini 2.5 Flash",    badge: "Balanced",color: "text-indigo-400" },
-  { value: "gemini-2.5-pro",        label: "Gemini 2.5 Pro",      badge: "Smart",   color: "text-violet-400" },
-  { value: "gemini-2.0-flash-lite", label: "Gemini Flash Lite",   badge: "Cheapest",color: "text-cyan-400" },
-  { value: "ollama/llama3",         label: "Llama 3 (Local)",     badge: "Free",    color: "text-emerald-400" },
-  { value: "ollama/mistral",        label: "Mistral (Local)",     badge: "Free",    color: "text-emerald-400" },
-  { value: "ollama/codellama",      label: "Code Llama (Local)",  badge: "Free",    color: "text-emerald-400" },
-  { value: "ollama/phi3",           label: "Phi-3 Mini (Local)",  badge: "Free",    color: "text-emerald-400" },
+  { value: "gemini-2.0-flash",      label: "Gemini 2.0 Flash",          badge: "Fast",    color: "text-blue-400",    requires: "gemini" },
+  { value: "gemini-2.5-flash",      label: "Gemini 2.5 Flash",          badge: "Balanced",color: "text-indigo-400",  requires: "gemini" },
+  { value: "gemini-2.5-pro",        label: "Gemini 2.5 Pro",            badge: "Smart",   color: "text-violet-400",  requires: "gemini" },
+  { value: "gemini-2.0-flash-lite", label: "Gemini Flash Lite",         badge: "Cheapest",color: "text-cyan-400",    requires: "gemini" },
+  { value: "apple/foundation",      label: "Apple Intelligence",         badge: "On-Device",color: "text-slate-300",  requires: "apple" },
+  { value: "ollama/llama3",         label: "Llama 3 (Local)",           badge: "Free",    color: "text-emerald-400", requires: "ollama" },
+  { value: "ollama/mistral",        label: "Mistral (Local)",           badge: "Free",    color: "text-emerald-400", requires: "ollama" },
+  { value: "ollama/codellama",      label: "Code Llama (Local)",        badge: "Free",    color: "text-emerald-400", requires: "ollama" },
+  { value: "ollama/phi3",           label: "Phi-3 Mini (Local)",        badge: "Free",    color: "text-emerald-400", requires: "ollama" },
 ];
 
 function PinGate({ onSuccess }: { onSuccess: () => void }) {
@@ -194,8 +195,9 @@ export default function SuperAgentApp() {
   }, []);
 
   const availableModels = MODEL_OPTIONS.filter(m => {
-    if (m.value.startsWith("ollama/")) return status?.ollama.available;
-    return true;
+    if (m.requires === "ollama") return status?.ollama.available;
+    if (m.requires === "apple") return status?.appleAI?.available;
+    return true; // Gemini options always shown (error shown if key missing)
   });
 
   const handleLogout = useCallback(async () => {
@@ -326,6 +328,12 @@ export default function SuperAgentApp() {
               <div className="flex items-center gap-1 text-[10px] text-emerald-400 ml-auto">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 <span>Ollama ({status.ollama.models.length})</span>
+              </div>
+            )}
+            {status?.appleAI?.available && (
+              <div className="flex items-center gap-1 text-[10px] text-slate-300 ml-auto">
+                <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                <span>Apple AI</span>
               </div>
             )}
           </div>

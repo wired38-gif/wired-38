@@ -60,6 +60,11 @@ export interface SAStatus {
     available: boolean;
     models: string[];
   };
+  appleAI: {
+    available: boolean;
+    modelId: string;
+    contextWindow?: number;
+  };
   kbSize: number;
   conversationCount: number;
 }

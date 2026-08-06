@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   Settings, Cpu, Cloud, Database, Globe, RefreshCw, Check,
-  ExternalLink, AlertTriangle, Wifi, WifiOff, ChevronDown, ChevronUp
+  ExternalLink, AlertTriangle, Wifi, WifiOff, ChevronDown, ChevronUp, Smartphone
 } from "lucide-react";
 import type { SAStatus } from "../types";
 
@@ -28,7 +28,8 @@ const LOCAL_MODELS = [
 export function SettingsPanel({ status, onRefresh }: Props) {
   const [sections, setSections] = useState<Record<string, boolean>>({
     status: true,
-    local: true,
+    apple: true,
+    local: false,
     deploy: false,
     about: false,
   });
@@ -77,6 +78,14 @@ export function SettingsPanel({ status, onRefresh }: Props) {
                 icon={Cloud}
               />
               <StatusRow
+                label="Apple Intelligence"
+                ok={!!status?.appleAI?.available}
+                detail={status?.appleAI?.available
+                  ? `On-device · ${status.appleAI.contextWindow?.toLocaleString() ?? "4,096"} tokens · Neural Engine`
+                  : "Not connected — see Apple Intelligence section below"}
+                icon={Smartphone}
+              />
+              <StatusRow
                 label="Ollama (Local)"
                 ok={!!status?.ollama.available}
                 detail={status?.ollama.available
@@ -104,6 +113,95 @@ export function SettingsPanel({ status, onRefresh }: Props) {
                 <RefreshCw size={11} />
                 Refresh status
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* Apple Intelligence */}
+        <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl overflow-hidden">
+          <button
+            onClick={() => toggle("apple")}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-700/20 transition-colors"
+          >
+            <Smartphone size={15} className="text-slate-300" />
+            <span className="text-sm font-semibold text-white flex-1 text-left">Apple Intelligence</span>
+            {status?.appleAI?.available && (
+              <span className="text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+                ✓ Connected
+              </span>
+            )}
+            {sections.apple ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
+          </button>
+          {sections.apple && (
+            <div className="border-t border-slate-700/50 px-4 py-3 space-y-3">
+              {status?.appleAI?.available ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                  <Wifi size={13} className="text-emerald-400" />
+                  <div>
+                    <p className="text-xs text-emerald-300 font-semibold">Apple Intelligence connected</p>
+                    <p className="text-[10px] text-emerald-500">
+                      On-device model · {status.appleAI.contextWindow ? `${status.appleAI.contextWindow.toLocaleString()} token context` : "4,096 token context"} · Neural Engine
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-lg">
+                  <AlertTriangle size={13} className="text-amber-400 mt-0.5 flex-shrink-0" />
+                  <p className="text-[10px] text-slate-400">
+                    Apple Intelligence not detected at{" "}
+                    <code className="text-slate-300 bg-slate-900 px-1 rounded">{process?.env?.APPLE_AI_URL || "localhost:11435"}</code>.
+                    Follow setup steps below.
+                  </p>
+                </div>
+              )}
+
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Apple's on-device <strong className="text-white">Foundation Model</strong> (~3B params) runs entirely on the Neural Engine of Apple Silicon Macs — free, private, no cloud, works offline. Powered by{" "}
+                <a href="https://apfel.franzai.com" target="_blank" rel="noopener" className="text-violet-400 hover:underline">apfel</a>.
+              </p>
+
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Mac Setup (macOS 26 Tahoe + Apple Silicon)</p>
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 space-y-1.5">
+                  <p className="text-[10px] text-slate-500">1. Enable Apple Intelligence: <span className="text-slate-300">System Settings → Apple Intelligence &amp; Siri → Enable</span></p>
+                  <div className="text-[10px] text-slate-400 font-mono space-y-1">
+                    <p className="text-slate-500">2. Install &amp; run apfel:</p>
+                    <code className="block bg-slate-950 px-2 py-1 rounded text-emerald-400">brew install apfel</code>
+                    <code className="block bg-slate-950 px-2 py-1 rounded text-emerald-400">apfel --serve --port 11435</code>
+                  </div>
+                  <p className="text-[10px] text-slate-500">3. Set env var on your server: <code className="text-slate-300">APPLE_AI_URL=http://localhost:11435/v1</code></p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">iPhone / iPad Access</p>
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 space-y-1.5">
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    iPhone can't run apfel directly. Instead, run apfel on your Mac and expose it to your phone via Tailscale (recommended) or your local network:
+                  </p>
+                  <div className="text-[10px] text-slate-400 font-mono space-y-1">
+                    <code className="block bg-slate-950 px-2 py-1 rounded text-emerald-400">apfel --serve --host 0.0.0.0 --port 11435</code>
+                  </div>
+                  <p className="text-[10px] text-slate-500">Then set: <code className="text-slate-300">APPLE_AI_URL=http://YOUR_MAC_IP:11435/v1</code></p>
+                  <p className="text-[10px] text-slate-600">Tailscale gives a stable IP across networks (home, office, cellular).</p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Apple Writing Tools (already active)</p>
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  On Safari (iOS 18.2+ / macOS Sequoia+), Writing Tools work automatically on any text field — long-press the input and select <strong className="text-slate-400">Writing Tools</strong> to Proofread, Rewrite, Summarize, or change tone. No setup needed.
+                </p>
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                <a href="https://apfel.franzai.com" target="_blank" rel="noopener" className="flex items-center gap-1 text-[10px] text-violet-400 hover:underline">
+                  <ExternalLink size={9} />apfel docs
+                </a>
+                <a href="https://support.apple.com/guide/iphone/use-apple-intelligence-features-iphe50be2d8b/ios" target="_blank" rel="noopener" className="flex items-center gap-1 text-[10px] text-violet-400 hover:underline">
+                  <ExternalLink size={9} />Apple Intelligence setup
+                </a>
+              </div>
             </div>
           )}
         </div>

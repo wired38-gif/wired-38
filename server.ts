@@ -832,6 +832,61 @@ async function checkOllama(): Promise<{ available: boolean; models: string[] }> 
   }
 }
 
+// Check if Apple AI (apfel / Foundation Models) is available
+// apfel exposes an OpenAI-compatible API at APPLE_AI_URL (default localhost:11435/v1)
+async function checkAppleAI(): Promise<{ available: boolean; modelId: string; contextWindow?: number }> {
+  const appleUrl = process.env.APPLE_AI_URL || "http://localhost:11435/v1";
+  try {
+    // apfel exposes GET /health with model availability info
+    const healthUrl = appleUrl.replace(/\/v1$/, "") + "/health";
+    const resp = await fetch(healthUrl, { signal: AbortSignal.timeout(2000) });
+    if (!resp.ok) return { available: false, modelId: "apple-foundationmodel" };
+    const data = await resp.json() as {
+      modelAvailable?: boolean;
+      contextWindow?: number;
+      model?: string;
+    };
+    const available = data.modelAvailable !== false;
+    return {
+      available,
+      modelId: data.model || "apple-foundationmodel",
+      contextWindow: data.contextWindow,
+    };
+  } catch {
+    return { available: false, modelId: "apple-foundationmodel" };
+  }
+}
+
+// Chat with Apple Foundation Model via apfel's OpenAI-compatible API
+async function chatWithAppleAI(
+  systemPrompt: string,
+  messages: Array<{ role: string; content: string }>,
+): Promise<string> {
+  const appleUrl = process.env.APPLE_AI_URL || "http://localhost:11435/v1";
+  const payload = {
+    model: "apple-foundationmodel",
+    messages: [
+      { role: "system", content: systemPrompt },
+      ...messages,
+    ],
+    stream: false,
+    // Apple Foundation Model has a 4096-token context window — keep it short
+    max_tokens: 1024,
+  };
+  const resp = await fetch(`${appleUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Apple AI error ${resp.status}: ${errText.slice(0, 200)}`);
+  }
+  const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
 // Send a message to Ollama
 async function chatWithOllama(model: string, systemPrompt: string, messages: Array<{role: string; content: string}>): Promise<string> {
   const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
@@ -959,7 +1014,7 @@ app.post("/api/sa/logout", (req, res) => {
 
 // Status: Ollama + config check (public — needed for PIN gate to know if pin is required)
 app.get("/api/sa/status", async (req, res) => {
-  const ollama = await checkOllama();
+  const [ollama, appleAI] = await Promise.all([checkOllama(), checkAppleAI()]);
   const saAuthenticated = isSAAuthenticated(req);
   res.json({
     geminiConfigured: !!process.env.GEMINI_API_KEY,
@@ -968,6 +1023,7 @@ app.get("/api/sa/status", async (req, res) => {
     saAuthenticated,
     pinRequired: isSAPinConfigured(),
     ollama,
+    appleAI,
     kbSize: saAuthenticated ? loadAllKBEntries().length : 0,
     conversationCount: saAuthenticated ? loadAllConversations().length : 0,
   });
@@ -1063,7 +1119,14 @@ app.post("/api/sa/conversations/:id/messages", requireSAAuth, async (req, res) =
 
   try {
     // Route to appropriate AI backend
-    if (requestedModel?.startsWith("ollama/")) {
+    if (requestedModel?.startsWith("apple/") || requestedModel === "apple-foundationmodel") {
+      // Apple Foundation Model via apfel
+      const appleMessages = conv.messages
+        .slice(-10, -1) // smaller window — 4096 token context
+        .map(m => ({ role: m.role, content: m.content }));
+      replyText = await chatWithAppleAI(systemWithContext, appleMessages);
+      usedModel = "apple/foundation";
+    } else if (requestedModel?.startsWith("ollama/")) {
       // Explicit Ollama request
       const ollamaModel = requestedModel.replace("ollama/", "");
       const ollamaMessages = [
@@ -1227,6 +1290,7 @@ app.post("/api/sa/optimize-prompt", requireSAAuth, async (req, res) => {
     "gemini-2.5-flash":   { label: "Gemini 2.5 Flash",   cost: "medium", strengths: "Balanced reasoning + speed, coding, structured output" },
     "gemini-2.5-pro":     { label: "Gemini 2.5 Pro",     cost: "high",   strengths: "Deep reasoning, complex code, long documents, highest accuracy" },
     "gemini-2.0-flash-lite": { label: "Gemini Flash Lite", cost: "free", strengths: "Ultra-fast, minimal tasks, classification, one-shot Q&A" },
+    "apple/foundation":   { label: "Apple Intelligence (On-Device)", cost: "free", strengths: "Apple's on-device 3B model — 100% private, Neural Engine accelerated, no cloud, works offline. macOS 26+ / Apple Silicon only" },
     "ollama/llama3":      { label: "Llama 3 (Local)",    cost: "free",   strengths: "100% private, runs locally, good for sensitive data, general use" },
     "ollama/mistral":     { label: "Mistral (Local)",    cost: "free",   strengths: "Fast local model, good for coding + structured tasks, private" },
     "ollama/codellama":   { label: "Code Llama (Local)", cost: "free",   strengths: "Local code generation, debugging, refactoring — fully offline" },
@@ -1379,6 +1443,12 @@ Return JSON:
 app.get("/api/sa/local-models", requireSAAuth, async (req, res) => {
   const result = await checkOllama();
   res.json(result);
+});
+
+// Apple AI: check status
+app.get("/api/sa/apple-ai", requireSAAuth, async (req, res) => {
+  const result = await checkAppleAI();
+  res.json({ ...result, url: process.env.APPLE_AI_URL || "http://localhost:11435/v1" });
 });
 
 // Pull/run an Ollama model (triggers download)
