@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Send, Zap, Bot, User, Copy, Check, ChevronDown, ChevronUp,
-  RefreshCw, Sparkles, MessageSquare, AlertCircle
+  Send, Bot, User, Copy, Check,
+  RefreshCw, Sparkles, AlertCircle, Brain
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import type { SAConversation, SAMessage, PromptVariant, OptimizeResult } from "../types";
+import type { SAConversation, SAMessage, OptimizeResult } from "../types";
+import { SmartRouter } from "./SmartRouter";
 
 interface Props {
   conversationId: string | null;
@@ -14,10 +15,9 @@ interface Props {
   onNewChat: () => void;
 }
 
-interface PromptOptimizerState {
+interface SmartState {
   loading: boolean;
   result: OptimizeResult | null;
-  open: boolean;
 }
 
 function ModelBadge({ model }: { model: string }) {
@@ -94,90 +94,14 @@ function MessageBubble({ msg, isLast }: { msg: SAMessage; isLast: boolean }) {
   );
 }
 
-function PromptOptimizerCard({
-  variants,
-  taskType,
-  onSelect,
-}: {
-  variants: PromptVariant[];
-  taskType: string;
-  onSelect: (text: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(true);
-
-  const costColor = (cost: string) => {
-    switch (cost) {
-      case "free": return "text-emerald-400 bg-emerald-400/10 border-emerald-500/30";
-      case "low": return "text-blue-400 bg-blue-400/10 border-blue-500/30";
-      case "medium": return "text-amber-400 bg-amber-400/10 border-amber-500/30";
-      case "high": return "text-red-400 bg-red-400/10 border-red-500/30";
-      default: return "text-slate-400";
-    }
-  };
-
-  const complexityIcon = (c: string) => {
-    switch (c) {
-      case "fast": return "⚡";
-      case "balanced": return "⚖️";
-      case "thorough": return "🔬";
-      default: return "•";
-    }
-  };
-
-  return (
-    <div className="mx-4 mb-4 bg-slate-800/80 border border-violet-500/30 rounded-xl overflow-hidden">
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-slate-700/30 transition-colors"
-      >
-        <Sparkles size={14} className="text-violet-400" />
-        <div className="flex-1">
-          <span className="text-sm font-semibold text-violet-200">Prompt Optimizer</span>
-          <span className="ml-2 text-[10px] text-slate-500 capitalize">task: {taskType}</span>
-        </div>
-        <span className="text-[10px] text-slate-500">{variants.length} variants</span>
-        {expanded ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-      </button>
-
-      {expanded && (
-        <div className="border-t border-slate-700/50 divide-y divide-slate-700/30">
-          {variants.map((v, i) => (
-            <div key={i} className="p-3 hover:bg-slate-700/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] text-slate-500 font-mono">Variant {i + 1}</span>
-                <span className="text-xs font-semibold text-white">{v.modelLabel}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${costColor(v.estimatedCost)}`}>
-                  {v.estimatedCost}
-                </span>
-                <span className="text-[10px] text-slate-500 ml-auto">{complexityIcon(v.complexity)} {v.complexity}</span>
-              </div>
-              <div className="bg-slate-900/60 rounded-lg p-2 mb-2">
-                <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">{v.promptText}</p>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-[10px] text-slate-500 leading-relaxed flex-1">{v.rationale}</p>
-                <button
-                  onClick={() => onSelect(v.promptText)}
-                  className="flex-shrink-0 flex items-center gap-1 text-[10px] font-semibold px-2 py-1 bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/30 text-violet-300 rounded-lg transition-colors"
-                >
-                  <Send size={9} />
-                  Use
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// SmartRouter component (imported above) replaces the old PromptOptimizerCard
 
 export function ChatPanel({ conversationId, selectedModel, onConversationCreated, onConversationUpdated, onNewChat }: Props) {
   const [conversation, setConversation] = useState<SAConversation | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [optimizer, setOptimizer] = useState<PromptOptimizerState>({ loading: false, result: null, open: false });
+  const [smart, setSmart] = useState<SmartState>({ loading: false, result: null });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -199,7 +123,7 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
   useEffect(() => {
     if (conversationId) {
       loadConversation(conversationId);
-      setOptimizer({ loading: false, result: null, open: false });
+      setSmart({ loading: false, result: null });
     } else {
       setConversation(null);
     }
@@ -213,7 +137,7 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
     if (!text.trim() || sending) return;
     setError(null);
     setSending(true);
-    setOptimizer(o => ({ ...o, result: null }));
+    setSmart({ loading: false, result: null });
 
     let targetId = conversationId;
 
@@ -288,9 +212,9 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
     setInput("");
   }, [input, sendMessage]);
 
-  const optimizePrompt = useCallback(async () => {
+  const analyzePrompt = useCallback(async () => {
     if (!input.trim()) return;
-    setOptimizer({ loading: true, result: null, open: true });
+    setSmart({ loading: true, result: null });
     try {
       const r = await fetch("/api/sa/optimize-prompt", {
         method: "POST",
@@ -298,15 +222,15 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
         body: JSON.stringify({ rawPrompt: input }),
       });
       const data = await r.json() as OptimizeResult;
-      setOptimizer({ loading: false, result: data, open: true });
+      setSmart({ loading: false, result: data });
     } catch {
-      setOptimizer({ loading: false, result: null, open: false });
+      setSmart({ loading: false, result: null });
     }
   }, [input]);
 
-  const useOptimizedPrompt = useCallback((text: string) => {
+  const useVariant = useCallback((text: string, model: string) => {
     setInput(text);
-    setOptimizer(o => ({ ...o, open: false }));
+    setSmart({ loading: false, result: null });
     textareaRef.current?.focus();
   }, []);
 
@@ -324,28 +248,33 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center px-6 text-center">
-            <div className="w-16 h-16 bg-gradient-to-br from-violet-500/20 to-indigo-600/20 border border-violet-500/30 rounded-2xl flex items-center justify-center mb-4">
-              <Bot size={28} className="text-violet-400" />
+          <div className="relative mb-5">
+            <div className="w-20 h-20 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xl shadow-violet-900/50">
+              <Brain size={34} className="text-white" />
             </div>
-            <h2 className="text-lg font-bold text-white mb-2">MYK Super Agent</h2>
-            <p className="text-sm text-slate-400 max-w-md leading-relaxed mb-6">
-              Your unified AI across all projects. Chat about anything — MYK brands, code, strategy, Entrata, side projects — with memory from your knowledge base.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
-              {[
-                "What are MYK's current side projects?",
-                "Help me optimize this Cursor prompt",
-                "Explain the ClearWorth/Entrata stack",
-                "What local models can I run for free?",
-              ].map(suggestion => (
-                <button
-                  key={suggestion}
-                  onClick={() => { setInput(suggestion); textareaRef.current?.focus(); }}
-                  className="px-3 py-2 text-xs text-left text-slate-400 bg-slate-800/50 border border-slate-700 rounded-xl hover:bg-slate-700 hover:border-violet-500/50 hover:text-slate-200 transition-all"
-                >
-                  {suggestion}
-                </button>
-              ))}
+            <div className="absolute -inset-1 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl blur opacity-20 animate-pulse" />
+          </div>
+          <h2 className="text-xl font-black text-white mb-1">MYK Super Agent</h2>
+          <p className="text-xs text-violet-400 mb-3 font-mono">SA.Mykbrands.com · Designs by Myk LLC</p>
+          <p className="text-sm text-slate-400 max-w-md leading-relaxed mb-6">
+            Your unified AI with memory across all MYK projects. Type anything — hit <kbd className="px-1 py-0.5 bg-slate-800 border border-slate-700 rounded text-[10px] font-mono">Analyze</kbd> first for optimized prompts + best agent recommendations.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
+            {[
+              { text: "What are all MYK's current projects?", emoji: "🏗️" },
+              { text: "Give me the best prompt for building a React component", emoji: "⚡" },
+              { text: "Compare Gemini vs Claude vs Apple AI for my use case", emoji: "🤖" },
+              { text: "Summarize everything in my knowledge base", emoji: "🧠" },
+            ].map(s => (
+              <button
+                key={s.text}
+                onClick={() => { setInput(s.text); textareaRef.current?.focus(); }}
+                className="px-3 py-2.5 text-xs text-left text-slate-400 bg-slate-800/40 border border-slate-700/60 rounded-xl hover:bg-violet-500/10 hover:border-violet-500/40 hover:text-slate-200 transition-all group"
+              >
+                <span className="mr-2">{s.emoji}</span>
+                <span className="group-hover:text-white transition-colors">{s.text}</span>
+              </button>
+            ))}
             </div>
           </div>
         ) : (
@@ -387,12 +316,14 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
         </div>
       )}
 
-      {/* Prompt Optimizer Results */}
-      {optimizer.result && (
-        <PromptOptimizerCard
-          variants={optimizer.result.variants}
-          taskType={optimizer.result.taskType}
-          onSelect={useOptimizedPrompt}
+      {/* Smart Analysis Results */}
+      {smart.result && (
+        <SmartRouter
+          result={smart.result}
+          rawPrompt={input}
+          onUseVariant={useVariant}
+          onSendDirect={() => { handleSubmit(); setSmart({ loading: false, result: null }); }}
+          loading={sending}
         />
       )}
 
@@ -406,7 +337,7 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
                 value={input}
                 onChange={autoResize}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask anything about MYK's projects… (Enter to send, Shift+Enter for newline)"
+                placeholder="Ask anything… or hit Analyze for optimized prompts + best agent (Enter to send)"
                 rows={1}
                 className="w-full bg-transparent px-4 py-3 text-sm text-slate-200 placeholder-slate-600 resize-none focus:outline-none leading-relaxed"
                 style={{ minHeight: "46px", maxHeight: "200px" }}
@@ -414,17 +345,17 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
               {/* Toolbar */}
               <div className="flex items-center gap-2 px-3 pb-2">
                 <button
-                  onClick={optimizePrompt}
-                  disabled={!input.trim() || optimizer.loading}
-                  title="Optimize prompt + suggest models"
+                  onClick={analyzePrompt}
+                  disabled={!input.trim() || smart.loading}
+                  title="Analyze + get optimized prompts with agent recommendations"
                   className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-violet-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  {optimizer.loading ? (
+                  {smart.loading ? (
                     <RefreshCw size={12} className="animate-spin text-violet-400" />
                   ) : (
-                    <Sparkles size={12} />
+                    <Brain size={12} />
                   )}
-                  Optimize
+                  Analyze
                 </button>
                 <span className="text-slate-700 text-[10px] ml-auto">
                   {input.length > 0 && `${input.length} chars`}
@@ -434,16 +365,13 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
             <button
               onClick={handleSubmit}
               disabled={!input.trim() || sending}
-              className="flex-shrink-0 w-10 h-10 bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-xl flex items-center justify-center transition-colors"
+              className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed rounded-xl flex items-center justify-center transition-all shadow-md shadow-violet-900/30"
             >
               <Send size={16} className="text-white" />
             </button>
           </div>
           <p className="text-[10px] text-slate-700 text-center mt-1">
-            MYK Super Agent · Designs by Myk LLC · RAG-powered memory
-            {typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) && (
-              <span className="ml-1 text-slate-800">· Long-press for Apple Writing Tools</span>
-            )}
+            <span className="text-violet-800">↑ Analyze</span> for optimized prompts &amp; agent routing · Enter to send · MYK Super Agent
           </p>
         </div>
       </div>
