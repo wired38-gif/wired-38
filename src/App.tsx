@@ -20,6 +20,7 @@ import { ChatAssistant } from "./components/entrata/ChatAssistant";
 import { AccountSetup, AccountData } from "./components/entrata/AccountSetup";
 import { Certificate } from "./components/entrata/Certificate";
 import { QueenChatAgent } from "./components/QueenChatAgent";
+import { OAuthSetup } from "./components/entrata/OAuthSetup";
 
 const STORAGE_KEY = "entrata_training_progress";
 const ACCOUNT_KEY = "entrata_account";
@@ -393,7 +394,7 @@ export default function App() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
   const [mode, setMode] = useState<AppMode>("learning");
-  const [currentView, setCurrentView] = useState<"workflow" | "reference" | "glossary" | "videos">("workflow");
+  const [currentView, setCurrentView] = useState<"workflow" | "reference" | "glossary" | "videos" | "oauth">("workflow");
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -469,7 +470,7 @@ export default function App() {
     handleWorkflowSelect(workflowId);
   }
 
-  function handleViewChange(view: "workflow" | "reference" | "glossary" | "videos") {
+  function handleViewChange(view: "workflow" | "reference" | "glossary" | "videos" | "oauth") {
     setCurrentView(view);
     if (view !== "workflow") setActiveWorkflowId(null);
   }
@@ -580,7 +581,11 @@ export default function App() {
         </MobileDrawer>
 
         {/* Mobile Content */}
-        {currentView === "reference" || currentView === "glossary" ? (
+        {currentView === "oauth" ? (
+          <div className="overflow-y-auto h-[calc(100vh-57px)]">
+            <OAuthSetup />
+          </div>
+        ) : currentView === "reference" || currentView === "glossary" ? (
           <div className="pb-6 overflow-y-auto h-[calc(100vh-57px)]">
             <QuickReference view={currentView as "reference" | "glossary"} selectedRole={selectedRole} />
           </div>
@@ -687,7 +692,9 @@ export default function App() {
 
         {/* CENTER: Simulation Workspace (50%) */}
         <div className="flex-1 overflow-hidden border-x border-slate-800">
-          {currentView === "videos" ? (
+          {currentView === "oauth" ? (
+            <OAuthSetup />
+          ) : currentView === "videos" ? (
             <VideoPanel selectedRole={selectedRole} />
           ) : currentView === "workflow" ? (
             mode === "learning" && activeWorkflow ? (
