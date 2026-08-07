@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env*
+!.env.example
+data/super-agent/conversations/
+data/super-agent/kb/
+.DS_Store
+*.log

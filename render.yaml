@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: myk-super-agent
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/server.cjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: SA_PIN
+        sync: false
+      - key: OLLAMA_URL
+        sync: false
+      - key: APPLE_AI_URL
+        sync: false
+    disk:
+      name: super-agent-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
