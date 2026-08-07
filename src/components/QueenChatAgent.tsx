@@ -21,7 +21,7 @@ interface TicketForm {
   description: string;
 }
 
-// ─── Quick-access question chips ─────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const QUICK_QUESTIONS = [
   "What products do you offer?",
@@ -43,96 +43,146 @@ const ISSUE_TYPES = [
   "Other",
 ];
 
+// Brand colours (kept in one place for consistency)
+const BRAND = {
+  gradientBg: "linear-gradient(135deg, #be185d 0%, #9d174d 60%, #7c1d6f 100%)",
+  gradientBtn: "linear-gradient(135deg, #db2777, #9d174d)",
+  panelBg: "#0f172a",
+  bubbleBg: "rgba(30,41,59,1)",       // fully opaque so text is always readable
+  inputBg: "rgba(30,41,59,1)",
+  borderPink: "rgba(236,72,153,0.35)",
+  borderPinkFocus: "rgba(236,72,153,0.8)",
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function parseReply(text: string): { clean: string; action?: "create-ticket" | "view-products" } {
-  const ticketMatch = text.includes("[ACTION:create-ticket]");
-  const productsMatch = text.includes("[ACTION:view-products]");
+  const isTicket = text.includes("[ACTION:create-ticket]");
+  const isProducts = text.includes("[ACTION:view-products]");
   const clean = text
     .replace(/\[ACTION:create-ticket\]/g, "")
     .replace(/\[ACTION:view-products\]/g, "")
     .trim();
-
-  if (ticketMatch) return { clean, action: "create-ticket" };
-  if (productsMatch) return { clean, action: "view-products" };
+  if (isTicket) return { clean, action: "create-ticket" };
+  if (isProducts) return { clean, action: "view-products" };
   return { clean };
 }
 
+// Renders text with markdown-like formatting using real JSX
+// (avoids dangerouslySetInnerHTML so Tailwind classes are never at risk of being purged)
 function renderText(text: string) {
-  const lines = text.split("\n");
-  return lines.map((line, i) => {
-    if (line.startsWith("- ") || line.startsWith("• ")) {
-      const content = line.replace(/^[-•]\s*/, "");
+  return text.split("\n").map((line, i) => {
+    if (!line.trim()) return <div key={i} style={{ height: 4 }} />;
+
+    // Bullet
+    if (/^[-•]\s/.test(line)) {
       return (
-        <div key={i} className="flex gap-2 my-0.5">
-          <span className="text-pink-400 flex-shrink-0 mt-0.5">•</span>
-          <span dangerouslySetInnerHTML={{ __html: formatInline(content) }} />
+        <div key={i} style={{ display: "flex", gap: 6, marginTop: 2 }}>
+          <span style={{ color: "#f9a8d4", flexShrink: 0, marginTop: 1 }}>•</span>
+          <span>{inlineFormat(line.replace(/^[-•]\s*/, ""))}</span>
         </div>
       );
     }
-    if (/^\d+\.\s/.test(line)) {
-      const num = line.match(/^(\d+)\./)?.[1];
-      const content = line.replace(/^\d+\.\s*/, "");
+
+    // Numbered list
+    const numMatch = line.match(/^(\d+)\.\s+(.*)/);
+    if (numMatch) {
       return (
-        <div key={i} className="flex gap-2 my-0.5">
-          <span className="text-pink-400 flex-shrink-0 font-bold text-xs mt-0.5 w-3">{num}.</span>
-          <span dangerouslySetInnerHTML={{ __html: formatInline(content) }} />
+        <div key={i} style={{ display: "flex", gap: 6, marginTop: 2 }}>
+          <span style={{ color: "#f9a8d4", flexShrink: 0, fontWeight: 700, fontSize: 11, marginTop: 1, minWidth: 14 }}>
+            {numMatch[1]}.
+          </span>
+          <span>{inlineFormat(numMatch[2])}</span>
         </div>
       );
     }
-    if (line.startsWith("**") && line.endsWith("**")) {
-      return (
-        <div
-          key={i}
-          className="font-bold text-white mt-1"
-          dangerouslySetInnerHTML={{ __html: formatInline(line) }}
-        />
-      );
-    }
-    if (!line.trim()) return <div key={i} className="h-1" />;
-    return <div key={i} dangerouslySetInnerHTML={{ __html: formatInline(line) }} />;
+
+    return <div key={i}>{inlineFormat(line)}</div>;
   });
 }
 
-function formatInline(text: string) {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
-    .replace(/`(.+?)`/g, '<code class="bg-slate-700 text-pink-300 px-1 rounded text-[10px] font-mono">$1</code>');
+// Renders inline bold and code as real React elements
+function inlineFormat(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  const re = /(\*\*(.+?)\*\*|`(.+?)`)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+
+    if (m[0].startsWith("**")) {
+      parts.push(
+        <strong key={m.index} style={{ color: "#ffffff", fontWeight: 700 }}>
+          {m[2]}
+        </strong>
+      );
+    } else {
+      parts.push(
+        <code
+          key={m.index}
+          style={{
+            background: "rgba(51,65,85,0.9)",
+            color: "#f9a8d4",
+            padding: "0 4px",
+            borderRadius: 4,
+            fontSize: 10,
+            fontFamily: "monospace",
+          }}
+        >
+          {m[3]}
+        </code>
+      );
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length === 1 ? parts[0] : <>{parts}</>;
 }
 
-// ─── Queen Avatar (circular crown image or stylised fallback) ─────────────────
+// ─── Queen Avatar ─────────────────────────────────────────────────────────────
 
-function QueenAvatar({
-  size = "md",
-  className = "",
-}: {
-  size?: "sm" | "md" | "lg";
-  className?: string;
-}) {
-  const [imgError, setImgError] = useState(false);
-  const sizes = { sm: "w-7 h-7", md: "w-8 h-8", lg: "w-10 h-10" };
-  const iconSizes = { sm: 12, md: 14, lg: 18 };
+function QueenAvatar({ size = "md", className = "" }: { size?: "sm" | "md" | "lg"; className?: string }) {
+  const [imgErr, setImgErr] = useState(false);
+  const px = { sm: 28, md: 32, lg: 42 };
+  const iconPx = { sm: 12, md: 14, lg: 20 };
+  const dim = px[size];
 
-  if (!imgError) {
+  if (!imgErr) {
     return (
       <img
         src="/queen-avatar.png"
         alt="Queen"
-        className={`${sizes[size]} rounded-full object-cover flex-shrink-0 ring-1 ring-pink-500/40 ${className}`}
-        onError={() => setImgError(true)}
+        onError={() => setImgErr(true)}
+        className={className}
+        style={{
+          width: dim,
+          height: dim,
+          borderRadius: "50%",
+          objectFit: "cover",
+          flexShrink: 0,
+          boxShadow: "0 0 0 2px rgba(236,72,153,0.5)",
+        }}
       />
     );
   }
 
   return (
     <div
-      className={`${sizes[size]} rounded-full flex-shrink-0 flex items-center justify-center ${className}`}
+      className={className}
       style={{
-        background: "linear-gradient(135deg, #be185d 0%, #9d174d 50%, #7c1d6f 100%)",
-        boxShadow: "0 0 0 1px rgba(236,72,153,0.4)",
+        width: dim,
+        height: dim,
+        borderRadius: "50%",
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: BRAND.gradientBg,
+        boxShadow: "0 0 0 2px rgba(236,72,153,0.5)",
       }}
     >
-      <Crown size={iconSizes[size]} className="text-yellow-300" />
+      <Crown size={iconPx[size]} color="#fde047" />
     </div>
   );
 }
@@ -140,126 +190,109 @@ function QueenAvatar({
 // ─── Support Ticket Form ──────────────────────────────────────────────────────
 
 interface TicketFormPanelProps {
-  onSubmit: (ticket: TicketForm) => Promise<void>;
+  onSubmit: (t: TicketForm) => Promise<void>;
   onCancel: () => void;
   isSubmitting: boolean;
 }
 
 function TicketFormPanel({ onSubmit, onCancel, isSubmitting }: TicketFormPanelProps) {
-  const [form, setForm] = useState<TicketForm>({
-    name: "",
-    email: "",
-    issueType: ISSUE_TYPES[0],
-    description: "",
-  });
+  const [form, setForm] = useState<TicketForm>({ name: "", email: "", issueType: ISSUE_TYPES[0], description: "" });
+  const set = (f: keyof TicketForm) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm(p => ({ ...p, [f]: e.target.value }));
+  const canSubmit = form.name.trim() && form.email.trim() && form.description.trim() && !isSubmitting;
 
-  const set = (field: keyof TicketForm) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+  const fieldStyle: React.CSSProperties = {
+    width: "100%",
+    background: "#1e293b",
+    border: "1px solid rgba(236,72,153,0.35)",
+    borderRadius: 10,
+    padding: "9px 12px",
+    color: "#f1f5f9",           // slate-100 — bright, always readable
+    fontSize: 13,
+    outline: "none",
+    boxSizing: "border-box",
+  };
 
-  const canSubmit =
-    form.name.trim() &&
-    form.email.trim() &&
-    form.description.trim() &&
-    !isSubmitting;
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#cbd5e1",          // slate-300 — clearly visible label
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    marginBottom: 5,
+  };
 
   return (
-    <div className="p-3 space-y-2.5">
-      <div className="flex items-center gap-2 mb-3">
-        <Ticket size={14} className="text-pink-400 flex-shrink-0" />
-        <span className="text-xs font-bold text-white">Create Support Ticket</span>
+    <div style={{ padding: 14, overflowY: "auto", maxHeight: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+        <Ticket size={14} color="#f472b6" />
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>Create Support Ticket</span>
       </div>
 
-      <div>
-        <label className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block mb-1">
-          Your Name *
-        </label>
-        <input
-          type="text"
-          value={form.name}
-          onChange={set("name")}
-          placeholder="Full name"
-          className="w-full bg-slate-800 border border-slate-700 focus:border-pink-500 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-500 outline-none transition-colors"
-        />
-      </div>
-
-      <div>
-        <label className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block mb-1">
-          Email Address *
-        </label>
-        <input
-          type="email"
-          value={form.email}
-          onChange={set("email")}
-          placeholder="your@email.com"
-          className="w-full bg-slate-800 border border-slate-700 focus:border-pink-500 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-500 outline-none transition-colors"
-        />
-      </div>
-
-      <div>
-        <label className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block mb-1">
-          Issue Type *
-        </label>
-        <div className="relative">
-          <select
-            value={form.issueType}
-            onChange={set("issueType")}
-            className="w-full appearance-none bg-slate-800 border border-slate-700 focus:border-pink-500 rounded-lg px-3 py-2 text-xs text-white outline-none transition-colors pr-7"
-          >
-            {ISSUE_TYPES.map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-          <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div>
+          <label style={labelStyle}>Your Name *</label>
+          <input type="text" value={form.name} onChange={set("name")} placeholder="Full name" style={fieldStyle}
+            onFocus={e => (e.target.style.borderColor = BRAND.borderPinkFocus)}
+            onBlur={e => (e.target.style.borderColor = BRAND.borderPink)} />
         </div>
-      </div>
 
-      <div>
-        <label className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block mb-1">
-          Description *
-        </label>
-        <textarea
-          value={form.description}
-          onChange={set("description")}
-          placeholder="Describe your question or issue in detail…"
-          rows={3}
-          className="w-full bg-slate-800 border border-slate-700 focus:border-pink-500 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-500 outline-none transition-colors resize-none"
-        />
-      </div>
+        <div>
+          <label style={labelStyle}>Email Address *</label>
+          <input type="email" value={form.email} onChange={set("email")} placeholder="your@email.com" style={fieldStyle}
+            onFocus={e => (e.target.style.borderColor = BRAND.borderPinkFocus)}
+            onBlur={e => (e.target.style.borderColor = BRAND.borderPink)} />
+        </div>
 
-      <div className="flex gap-2 pt-1">
-        <button
-          onClick={onCancel}
-          className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-all"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => onSubmit(form)}
-          disabled={!canSubmit}
-          className="flex-1 py-2 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5"
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 size={11} className="animate-spin" /> Submitting…
-            </>
-          ) : (
-            <>
-              <Ticket size={11} /> Submit Ticket
-            </>
-          )}
-        </button>
+        <div>
+          <label style={labelStyle}>Issue Type *</label>
+          <div style={{ position: "relative" }}>
+            <select value={form.issueType} onChange={set("issueType")}
+              style={{ ...fieldStyle, paddingRight: 28, appearance: "none", cursor: "pointer" }}>
+              {ISSUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <ChevronDown size={12} color="#94a3b8"
+              style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+          </div>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Description *</label>
+          <textarea value={form.description} onChange={set("description")}
+            placeholder="Describe your question or issue…" rows={3}
+            style={{ ...fieldStyle, resize: "none", lineHeight: 1.5 }}
+            onFocus={e => (e.target.style.borderColor = BRAND.borderPinkFocus)}
+            onBlur={e => (e.target.style.borderColor = BRAND.borderPink)} />
+        </div>
+
+        <div style={{ display: "flex", gap: 8, paddingTop: 4 }}>
+          <button onClick={onCancel}
+            style={{ flex: 1, padding: "9px 0", background: "#1e293b", border: "1px solid #334155",
+              color: "#cbd5e1", fontSize: 12, fontWeight: 600, borderRadius: 10, cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={() => onSubmit(form)} disabled={!canSubmit}
+            style={{ flex: 1, padding: "9px 0", background: canSubmit ? BRAND.gradientBtn : "#4b5563",
+              border: "none", color: "#fff", fontSize: 12, fontWeight: 700, borderRadius: 10,
+              cursor: canSubmit ? "pointer" : "not-allowed", display: "flex", alignItems: "center",
+              justifyContent: "center", gap: 5 }}>
+            {isSubmitting ? <><Loader2 size={11} className="animate-spin" /> Submitting…</> : <><Ticket size={11} /> Submit Ticket</>}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Main QueenChatAgent Component ───────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function QueenChatAgent() {
   const [isOpen, setIsOpen] = useState(false);
   const [panel, setPanel] = useState<"chat" | "ticket">("chat");
-  const [ticketSuccess, setTicketSuccess] = useState<string | null>(null);
+  const [ticketMsg, setTicketMsg] = useState<string | null>(null);
+  const [ticketOk, setTicketOk] = useState(false);
   const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
   const [unread, setUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -281,7 +314,7 @@ export function QueenChatAgent() {
   useEffect(() => {
     if (isOpen) {
       setUnread(0);
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => inputRef.current?.focus(), 120);
     }
   }, [isOpen]);
 
@@ -289,64 +322,34 @@ export function QueenChatAgent() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, panel]);
 
-  const sendMessage = useCallback(
-    async (text: string) => {
-      if (!text.trim() || isLoading) return;
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isLoading) return;
+    const userMsg: Message = { id: Date.now().toString(), role: "user", text: text.trim(), timestamp: new Date() };
+    setMessages(p => [...p, userMsg]);
+    setInput("");
+    setIsLoading(true);
+    historyRef.current.push({ role: "user", parts: [{ text: text.trim() }] });
 
-      const userMsg: Message = {
-        id: Date.now().toString(),
-        role: "user",
-        text: text.trim(),
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, userMsg]);
-      setInput("");
-      setIsLoading(true);
-      historyRef.current.push({ role: "user", parts: [{ text: text.trim() }] });
-
-      try {
-        const res = await fetch("/api/queen-chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: text.trim(),
-            history: historyRef.current.slice(0, -1),
-          }),
-        });
-
-        const data = await res.json() as { reply?: string; error?: string };
-        const raw = data.reply ?? data.error ?? "I'm having a moment — please try again!";
-        const { clean, action } = parseReply(raw);
-
-        const assistantMsg: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          text: clean,
-          timestamp: new Date(),
-          action,
-        };
-
-        setMessages(prev => [...prev, assistantMsg]);
-        historyRef.current.push({ role: "model", parts: [{ text: raw }] });
-
-        if (!isOpen) setUnread(prev => prev + 1);
-      } catch {
-        setMessages(prev => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            text: "Network error — please check your connection and try again.",
-            timestamp: new Date(),
-          },
-        ]);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [isLoading, isOpen]
-  );
+    try {
+      const res = await fetch("/api/queen-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text.trim(), history: historyRef.current.slice(0, -1) }),
+      });
+      const data = await res.json() as { reply?: string; error?: string };
+      const raw = data.reply ?? data.error ?? "I'm having a moment — please try again!";
+      const { clean, action } = parseReply(raw);
+      const assistantMsg: Message = { id: (Date.now() + 1).toString(), role: "assistant", text: clean, timestamp: new Date(), action };
+      setMessages(p => [...p, assistantMsg]);
+      historyRef.current.push({ role: "model", parts: [{ text: raw }] });
+      if (!isOpen) setUnread(p => p + 1);
+    } catch {
+      setMessages(p => [...p, { id: (Date.now() + 1).toString(), role: "assistant",
+        text: "Network error — please check your connection and try again.", timestamp: new Date() }]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, isOpen]);
 
   async function handleTicketSubmit(ticket: TicketForm) {
     setIsSubmittingTicket(true);
@@ -357,30 +360,27 @@ export function QueenChatAgent() {
         body: JSON.stringify(ticket),
       });
       const data = await res.json() as { success?: boolean; ticketId?: string; message?: string; error?: string };
-
-      if (data.success && data.message) {
-        setTicketSuccess(data.message);
-        // After a moment, go back to chat and add a confirmation message
+      if (data.success) {
+        setTicketMsg(data.message ?? "Ticket submitted!");
+        setTicketOk(true);
         setTimeout(() => {
           setPanel("chat");
-          setTicketSuccess(null);
-          setMessages(prev => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              role: "assistant",
-              text: `✅ ${data.message ?? "Your ticket was submitted!"}`,
-              timestamp: new Date(),
-            },
-          ]);
-        }, 2500);
+          setTicketMsg(null);
+          setTicketOk(false);
+          setMessages(p => [...p, {
+            id: Date.now().toString(), role: "assistant",
+            text: `✅ ${data.message ?? "Your ticket was submitted!"}`, timestamp: new Date(),
+          }]);
+        }, 2600);
       } else {
-        setTicketSuccess(data.error ?? "Something went wrong. Please try again.");
-        setTimeout(() => setTicketSuccess(null), 3000);
+        setTicketMsg(data.error ?? "Something went wrong. Please try again.");
+        setTicketOk(false);
+        setTimeout(() => setTicketMsg(null), 3000);
       }
     } catch {
-      setTicketSuccess("Network error. Please try again.");
-      setTimeout(() => setTicketSuccess(null), 3000);
+      setTicketMsg("Network error. Please try again.");
+      setTicketOk(false);
+      setTimeout(() => setTicketMsg(null), 3000);
     } finally {
       setIsSubmittingTicket(false);
     }
@@ -389,40 +389,51 @@ export function QueenChatAgent() {
   function handleReset() {
     historyRef.current = [];
     setPanel("chat");
-    setMessages([
-      {
-        id: "welcome-" + Date.now(),
-        role: "assistant",
-        text: "Chat cleared! What can Queen help you with today? 👑",
-        timestamp: new Date(),
-      },
-    ]);
+    setMessages([{ id: "welcome-" + Date.now(), role: "assistant",
+      text: "Chat cleared! What can Queen help you with today? 👑", timestamp: new Date() }]);
   }
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <>
-      {/* ── Floating Bubble ─────────────────────────────── */}
+      {/* ── Floating Button ── */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-5 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 group"
+        title="Chat with Queen — Queenscustoms.shop"
         style={{
-          background: isOpen
-            ? "linear-gradient(135deg, #374151 0%, #1f2937 100%)"
-            : "linear-gradient(135deg, #db2777 0%, #9d174d 60%, #7c1d6f 100%)",
+          position: "fixed",
+          bottom: 24,
+          right: 20,
+          zIndex: 9999,
+          width: 58,
+          height: 58,
+          borderRadius: "50%",
+          border: "none",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: isOpen ? "#374151" : BRAND.gradientBg,
           boxShadow: isOpen
-            ? "0 4px 20px rgba(0,0,0,0.4)"
-            : "0 4px 24px rgba(219,39,119,0.5), 0 0 0 0 rgba(219,39,119,0.4)",
-          transform: isOpen ? "scale(0.95)" : undefined,
+            ? "0 4px 18px rgba(0,0,0,0.5)"
+            : "0 4px 24px rgba(190,24,93,0.55), 0 0 0 3px rgba(190,24,93,0.2)",
+          transition: "all 0.25s ease",
+          transform: isOpen ? "scale(0.93)" : "scale(1)",
         }}
-        title="Chat with Queen"
       >
         {isOpen ? (
-          <X size={22} className="text-white" />
+          <X size={22} color="#ffffff" />
         ) : (
-          <div className="relative">
-            <QueenAvatar size="lg" className="w-full h-full" />
+          <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <QueenAvatar size="lg" />
             {unread > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow">
+              <span style={{
+                position: "absolute", top: -6, right: -6,
+                width: 18, height: 18, background: "#ef4444", borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 10, fontWeight: 700, color: "#fff",
+              }}>
                 {unread}
               </span>
             )}
@@ -430,79 +441,77 @@ export function QueenChatAgent() {
         )}
       </button>
 
-      {/* ── Chat Panel ──────────────────────────────────── */}
+      {/* ── Chat Panel ── */}
       {isOpen && (
-        <div
-          className="fixed bottom-24 right-3 sm:right-5 z-50 w-[calc(100vw-24px)] sm:w-80 md:w-96 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-          style={{
-            height: "min(540px, calc(100dvh - 110px))",
-            background: "#0f172a",
-            border: "1px solid rgba(219,39,119,0.25)",
-            boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(219,39,119,0.15)",
-          }}
-        >
+        <div style={{
+          position: "fixed",
+          bottom: 92,
+          right: 12,
+          zIndex: 9998,
+          width: "min(calc(100vw - 24px), 380px)",
+          height: "min(540px, calc(100dvh - 112px))",
+          background: BRAND.panelBg,
+          border: `1px solid ${BRAND.borderPink}`,
+          borderRadius: 18,
+          boxShadow: "0 24px 56px rgba(0,0,0,0.65), 0 0 0 1px rgba(190,24,93,0.15)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}>
+
           {/* Header */}
-          <div
-            className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
-            style={{
-              background: "linear-gradient(135deg, #9d174d 0%, #7c1d6f 100%)",
-              borderBottom: "1px solid rgba(255,255,255,0.1)",
-            }}
-          >
+          <div style={{
+            background: BRAND.gradientBg,
+            padding: "10px 14px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexShrink: 0,
+            borderBottom: "1px solid rgba(255,255,255,0.12)",
+          }}>
             <QueenAvatar size="md" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-white leading-tight flex items-center gap-1.5">
-                Queen
-                <span className="text-yellow-300 text-xs">👑</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#ffffff", lineHeight: 1.2, display: "flex", alignItems: "center", gap: 5 }}>
+                Queen <span style={{ fontSize: 13 }}>👑</span>
               </div>
-              <div className="text-[10px] text-pink-200/70 leading-tight">
+              <div style={{ fontSize: 11, color: "#fce7f3", lineHeight: 1.3, marginTop: 1 }}>
                 Queenscustoms.shop · Custom Boutique
               </div>
             </div>
-
-            {/* Ticket shortcut */}
-            <button
-              onClick={() => { setPanel(panel === "ticket" ? "chat" : "ticket"); setTicketSuccess(null); }}
+            <button onClick={() => { setPanel(p => p === "ticket" ? "chat" : "ticket"); setTicketMsg(null); }}
               title={panel === "ticket" ? "Back to chat" : "Create support ticket"}
-              className={`p-1.5 rounded-lg transition-colors ${
-                panel === "ticket"
-                  ? "bg-white/20 text-white"
-                  : "text-white/60 hover:text-white hover:bg-white/10"
-              }`}
-            >
-              <Ticket size={14} />
+              style={{ padding: 6, background: panel === "ticket" ? "rgba(255,255,255,0.2)" : "transparent",
+                border: "none", cursor: "pointer", borderRadius: 8, color: "rgba(255,255,255,0.85)",
+                display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}>
+              <Ticket size={15} color="inherit" />
             </button>
-
-            <button
-              onClick={handleReset}
-              title="Clear chat"
-              className="p-1.5 text-white/60 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <RotateCcw size={13} />
+            <button onClick={handleReset} title="Clear chat"
+              style={{ padding: 6, background: "transparent", border: "none", cursor: "pointer",
+                borderRadius: 8, color: "rgba(255,255,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <RotateCcw size={13} color="inherit" />
             </button>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="p-1.5 text-white/60 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <Minimize2 size={14} />
+            <button onClick={() => setIsOpen(false)}
+              style={{ padding: 6, background: "transparent", border: "none", cursor: "pointer",
+                borderRadius: 8, color: "rgba(255,255,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Minimize2 size={14} color="inherit" />
             </button>
           </div>
 
           {/* ── Ticket Panel ── */}
           {panel === "ticket" && (
-            <div className="flex-1 overflow-y-auto bg-slate-900/60">
-              {ticketSuccess ? (
-                <div className="h-full flex flex-col items-center justify-center p-6 text-center">
-                  <CheckCircle2 size={44} className="text-emerald-400 mb-3" />
-                  <div className="text-sm font-bold text-emerald-400 mb-1">Ticket Submitted!</div>
-                  <p className="text-xs text-slate-400 leading-relaxed max-w-xs">{ticketSuccess}</p>
+            <div style={{ flex: 1, overflowY: "auto", background: "rgba(15,23,42,0.97)" }}>
+              {ticketMsg ? (
+                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center",
+                  justifyContent: "center", padding: 24, textAlign: "center", gap: 10 }}>
+                  {ticketOk
+                    ? <CheckCircle2 size={44} color="#34d399" />
+                    : <span style={{ fontSize: 28 }}>⚠️</span>}
+                  <p style={{ fontSize: 13, color: ticketOk ? "#6ee7b7" : "#fca5a5", lineHeight: 1.5, maxWidth: 280 }}>
+                    {ticketMsg}
+                  </p>
                 </div>
               ) : (
-                <TicketFormPanel
-                  onSubmit={handleTicketSubmit}
-                  onCancel={() => setPanel("chat")}
-                  isSubmitting={isSubmittingTicket}
-                />
+                <TicketFormPanel onSubmit={handleTicketSubmit} onCancel={() => setPanel("chat")} isSubmitting={isSubmittingTicket} />
               )}
             </div>
           )}
@@ -511,90 +520,88 @@ export function QueenChatAgent() {
           {panel === "chat" && (
             <>
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {messages.map(msg => (
-                  <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
-                    {/* Avatar */}
-                    {msg.role === "assistant" ? (
-                      <QueenAvatar size="sm" className="flex-shrink-0 self-end mb-1" />
-                    ) : (
-                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center self-end mb-1">
-                        <User size={12} className="text-slate-300" />
-                      </div>
-                    )}
-
-                    {/* Bubble */}
-                    <div
-                      className={`max-w-[78%] rounded-2xl px-3 py-2.5 text-xs leading-relaxed ${
-                        msg.role === "user"
-                          ? "text-white rounded-tr-sm"
-                          : "text-slate-200 rounded-tl-sm"
-                      }`}
-                      style={
-                        msg.role === "user"
-                          ? { background: "linear-gradient(135deg, #db2777, #9d174d)" }
-                          : { background: "rgba(30,41,59,0.9)", border: "1px solid rgba(219,39,119,0.15)" }
+              <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px 6px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {messages.map(msg => (
+                    <div key={msg.id} style={{ display: "flex", gap: 8,
+                      flexDirection: msg.role === "user" ? "row-reverse" : "row", alignItems: "flex-end" }}>
+                      {/* Avatar */}
+                      {msg.role === "assistant"
+                        ? <QueenAvatar size="sm" />
+                        : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#334155",
+                            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <User size={13} color="#94a3b8" />
+                          </div>
                       }
-                    >
-                      <div className="space-y-0.5">{renderText(msg.text)}</div>
+                      {/* Bubble */}
+                      <div style={{
+                        maxWidth: "78%",
+                        borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                        padding: "10px 12px",
+                        fontSize: 13,
+                        lineHeight: 1.55,
+                        color: "#f1f5f9",          // slate-100 — bright white-ish, always readable
+                        background: msg.role === "user" ? BRAND.gradientBtn : BRAND.bubbleBg,
+                        border: msg.role === "user" ? "none" : `1px solid ${BRAND.borderPink}`,
+                      }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          {renderText(msg.text)}
+                        </div>
 
-                      {/* Action Button */}
-                      {msg.action === "create-ticket" && (
-                        <button
-                          onClick={() => setPanel("ticket")}
-                          className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-bold transition-all text-white"
-                          style={{ background: "linear-gradient(135deg, #db2777, #9d174d)" }}
-                        >
-                          <Ticket size={11} />
-                          Create Support Ticket
-                        </button>
-                      )}
+                        {/* Ticket CTA */}
+                        {msg.action === "create-ticket" && (
+                          <button onClick={() => setPanel("ticket")}
+                            style={{ marginTop: 8, width: "100%", padding: "8px 0",
+                              background: BRAND.gradientBtn, border: "none", borderRadius: 12,
+                              color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                            <Ticket size={11} color="#fff" /> Create Support Ticket
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
 
-                {/* Loading */}
-                {isLoading && (
-                  <div className="flex gap-2">
-                    <QueenAvatar size="sm" className="self-end mb-1" />
-                    <div
-                      className="rounded-2xl rounded-tl-sm px-3 py-2.5 flex items-center gap-2"
-                      style={{ background: "rgba(30,41,59,0.9)", border: "1px solid rgba(219,39,119,0.15)" }}
-                    >
-                      <Loader2 size={12} className="text-pink-400 animate-spin" />
-                      <span className="text-xs text-slate-400">Queen is typing…</span>
+                  {/* Typing indicator */}
+                  {isLoading && (
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                      <QueenAvatar size="sm" />
+                      <div style={{ borderRadius: "18px 18px 18px 4px", padding: "10px 14px",
+                        background: BRAND.bubbleBg, border: `1px solid ${BRAND.borderPink}`,
+                        display: "flex", alignItems: "center", gap: 7 }}>
+                        <Loader2 size={13} color="#f472b6" className="animate-spin" />
+                        <span style={{ fontSize: 12, color: "#cbd5e1" }}>Queen is typing…</span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                <div ref={messagesEndRef} />
+                  <div ref={messagesEndRef} />
+                </div>
               </div>
 
-              {/* Quick Questions (shown on first load only) */}
+              {/* Quick Questions */}
               {messages.length === 1 && (
-                <div className="px-3 pb-2 flex-shrink-0">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5 font-semibold">
+                <div style={{ padding: "0 12px 10px", flexShrink: 0 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8",
+                    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>
                     Popular questions
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {QUICK_QUESTIONS.slice(0, 5).map(q => (
-                      <button
-                        key={q}
-                        onClick={() => sendMessage(q)}
-                        className="text-[10px] border text-slate-300 hover:text-white px-2.5 py-1.5 rounded-xl transition-all font-medium"
-                        style={{
-                          background: "rgba(30,41,59,0.8)",
-                          borderColor: "rgba(219,39,119,0.3)",
-                        }}
+                      <button key={q} onClick={() => sendMessage(q)}
+                        style={{ fontSize: 11, fontWeight: 600, color: "#e2e8f0",   // bright enough to read
+                          background: "#1e293b", border: `1px solid ${BRAND.borderPink}`,
+                          padding: "6px 11px", borderRadius: 12, cursor: "pointer", transition: "all 0.15s" }}
                         onMouseEnter={e => {
-                          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(219,39,119,0.7)";
-                          (e.currentTarget as HTMLButtonElement).style.background = "rgba(157,23,77,0.3)";
+                          (e.currentTarget as HTMLButtonElement).style.background = "rgba(157,23,77,0.35)";
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(236,72,153,0.7)";
+                          (e.currentTarget as HTMLButtonElement).style.color = "#fff";
                         }}
                         onMouseLeave={e => {
-                          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(219,39,119,0.3)";
-                          (e.currentTarget as HTMLButtonElement).style.background = "rgba(30,41,59,0.8)";
-                        }}
-                      >
+                          (e.currentTarget as HTMLButtonElement).style.background = "#1e293b";
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = BRAND.borderPink;
+                          (e.currentTarget as HTMLButtonElement).style.color = "#e2e8f0";
+                        }}>
                         {q}
                       </button>
                     ))}
@@ -602,15 +609,15 @@ export function QueenChatAgent() {
                 </div>
               )}
 
-              {/* Input */}
-              <div
-                className="border-t p-3 flex-shrink-0"
-                style={{ borderColor: "rgba(219,39,119,0.2)", background: "rgba(15,23,42,0.8)" }}
-              >
-                <form
-                  onSubmit={e => { e.preventDefault(); sendMessage(input); }}
-                  className="flex items-center gap-2"
-                >
+              {/* Input row */}
+              <div style={{
+                padding: "10px 12px",
+                flexShrink: 0,
+                borderTop: `1px solid ${BRAND.borderPink}`,
+                background: "rgba(15,23,42,0.95)",
+              }}>
+                <form onSubmit={e => { e.preventDefault(); sendMessage(input); }}
+                  style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <input
                     ref={inputRef}
                     type="text"
@@ -618,25 +625,25 @@ export function QueenChatAgent() {
                     onChange={e => setInput(e.target.value)}
                     placeholder="Ask Queen anything…"
                     disabled={isLoading}
-                    className="flex-1 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none transition-colors"
                     style={{
-                      background: "rgba(30,41,59,0.9)",
-                      border: "1px solid rgba(219,39,119,0.25)",
+                      flex: 1,
+                      background: BRAND.inputBg,
+                      border: `1px solid ${BRAND.borderPink}`,
+                      borderRadius: 12,
+                      padding: "9px 14px",
+                      fontSize: 13,
+                      color: "#f1f5f9",          // bright text in input
+                      outline: "none",
                     }}
-                    onFocus={e => {
-                      (e.currentTarget as HTMLInputElement).style.borderColor = "rgba(219,39,119,0.7)";
-                    }}
-                    onBlur={e => {
-                      (e.currentTarget as HTMLInputElement).style.borderColor = "rgba(219,39,119,0.25)";
-                    }}
+                    onFocus={e => (e.target.style.borderColor = BRAND.borderPinkFocus)}
+                    onBlur={e => (e.target.style.borderColor = BRAND.borderPink)}
                   />
-                  <button
-                    type="submit"
-                    disabled={!input.trim() || isLoading}
-                    className="flex-shrink-0 w-9 h-9 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl transition-all"
-                    style={{ background: "linear-gradient(135deg, #db2777, #9d174d)" }}
-                  >
-                    <Send size={14} />
+                  <button type="submit" disabled={!input.trim() || isLoading}
+                    style={{ width: 38, height: 38, flexShrink: 0,
+                      background: input.trim() && !isLoading ? BRAND.gradientBtn : "#374151",
+                      border: "none", borderRadius: 12, cursor: input.trim() && !isLoading ? "pointer" : "not-allowed",
+                      display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.2s" }}>
+                    <Send size={15} color="#ffffff" />
                   </button>
                 </form>
               </div>
