@@ -431,9 +431,14 @@ export default function App() {
     setAccount(null);
   }
 
-  // Show account setup if not authenticated
+  // Show account setup if not authenticated — Queen chat stays mounted at all times
   if (!account) {
-    return <AccountSetup onSuccess={handleAccountSuccess} />;
+    return (
+      <>
+        <AccountSetup onSuccess={handleAccountSuccess} />
+        <QueenChatAgent />
+      </>
+    );
   }
 
   const activeWorkflow: EntrataWorkflow | null = useMemo(
