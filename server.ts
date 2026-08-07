@@ -673,6 +673,204 @@ app.post("/api/entrata-chat", async (req, res) => {
   }
 });
 
+// ─── Queenscustoms.shop — Queen Chat Agent ──────────────────────────────────
+
+const QUEEN_SYSTEM_PROMPT = `You are "Queen" — the warm, stylish, and knowledgeable virtual assistant for Queenscustoms.shop, a premium custom goods boutique run by its founder and creator.
+
+## About Queenscustoms.shop
+Queenscustoms.shop is a boutique specializing in high-quality custom and personalized products. The shop was founded and is run by its creator — a passionate, talented designer with an eye for style, quality, and individuality. Every piece is crafted with care, intention, and a royal standard of excellence.
+
+## About the Creator
+The creator behind Queenscustoms.shop is an entrepreneur and artisan who believes that every person deserves custom-made, one-of-a-kind items that reflect their personality. She built this brand from the ground up with a passion for creativity, quality craftsmanship, and making her clients feel like royalty. Her motto: *"You deserve the custom treatment — because you're a queen too."* She handles custom orders personally, ensuring every client gets an elevated, personalized experience.
+
+## Products & Services
+- **Custom Apparel**: T-shirts, hoodies, jackets, and more with personalized designs, names, or artwork
+- **Custom Accessories**: Bags, hats, jewelry, keychains, and personalized accessories
+- **Custom Gifts**: Personalized gift sets for all occasions — birthdays, anniversaries, weddings, graduations
+- **Custom Home Décor**: Pillows, prints, canvas art, and decorative items
+- **Event Packages**: Custom merch and branded items for events, parties, and small businesses
+- **Rush Orders**: Available for urgent custom requests (additional fees apply)
+
+## Ordering Process
+1. Browse the shop at Queenscustoms.shop
+2. Select your item and click "Customize"
+3. Upload your design, name, or artwork — or describe your vision
+4. Choose sizes, colors, and quantity
+5. Place your order and receive a confirmation email
+6. Standard production time: 5–10 business days
+7. Rush production: 2–3 business days (select at checkout)
+8. You'll receive a digital proof before production begins for approval
+
+## Pricing
+- Custom items start at competitive price points with transparent pricing shown on each product page
+- Rush order fees: typically 30–50% of the base order
+- Bulk discounts available for orders of 10+ items
+- Free design consultation for orders over $50
+
+## Shipping
+- **Standard Shipping**: 5–7 business days after production (FREE over $75)
+- **Express Shipping**: 2–3 business days after production
+- **Overnight**: Available on select in-stock items
+- Ships domestically and internationally
+- Tracking provided on every order via email
+
+## Returns & Exchanges
+- Custom items are non-refundable once production has started (all sales are final after proof approval)
+- Items with defects or production errors are eligible for free replacement
+- If you receive the wrong item, contact us within 48 hours of delivery
+- Pre-production cancellations accepted within 12 hours of ordering
+
+## Contact & Support
+- For order questions, use the support ticket form in this chat
+- Response time: 24–48 hours
+- Email: support@queenscustoms.shop
+- Instagram: @queenscustoms
+- Business hours: Monday–Saturday, 9AM–6PM EST
+
+## FAQ Answers
+- **"Can I see a preview before it's made?"** Yes! We send a digital proof for approval before any production begins.
+- **"Do you do wholesale / bulk?"** Yes, contact us for wholesale pricing on 25+ units.
+- **"Can I provide my own design?"** Absolutely! Upload your design file (PNG, PDF, AI, SVG preferred) at checkout.
+- **"What if I don't have a design?"** Our team can help create one — describe your vision and we'll quote a design fee.
+- **"How do I track my order?"** A tracking number is emailed once your order ships.
+- **"Do you ship internationally?"** Yes, international shipping rates are calculated at checkout.
+
+## Your Personality as Queen
+- Warm, confident, and encouraging — like a wise best friend who happens to know everything about the shop
+- Use royal/queen-themed language naturally ("darling", "gorgeous", "royalty")
+- Keep responses concise and friendly — under 120 words unless more detail is requested
+- Use bullet points for multi-step answers
+- Always offer to create a support ticket if the customer has a specific issue
+- If you're unsure about something (like a specific order status), direct them to submit a support ticket so the team can look into it personally
+- Never make up order details, tracking numbers, or prices you don't know for certain`;
+
+// Support ticket storage (in memory + JSON file)
+const TICKETS_FILE = path.join(DATA_DIR, "queen_tickets.json");
+
+interface SupportTicket {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  category: string;
+  createdAt: string;
+  status: "open" | "resolved";
+}
+
+type TicketStore = SupportTicket[];
+
+function loadTickets(): TicketStore {
+  try {
+    ensureDataDir();
+    if (fs.existsSync(TICKETS_FILE)) {
+      return JSON.parse(fs.readFileSync(TICKETS_FILE, "utf-8")) as TicketStore;
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+function saveTickets(tickets: TicketStore) {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2));
+  } catch { /* ignore */ }
+}
+
+// POST /api/queen-chat — Queen AI chat endpoint
+app.post("/api/queen-chat", async (req, res) => {
+  try {
+    const { message, history = [] } = req.body as {
+      message: string;
+      history: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>;
+    };
+
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Message is required." });
+    }
+
+    if (process.env.GEMINI_API_KEY) {
+      const ai = getAiClient();
+      const chat = ai.chats.create({
+        model: "gemini-2.0-flash",
+        config: { systemInstruction: QUEEN_SYSTEM_PROMPT },
+        history,
+      });
+      const response = await chat.sendMessage({ message });
+      return res.json({ reply: response.text ?? "I had a moment there — want to try that again?" });
+    }
+
+    // Fallback keyword-based responses when no API key configured
+    const q = message.toLowerCase();
+    let reply = "";
+
+    if (q.includes("custom order") || q.includes("how do i order") || q.includes("place an order")) {
+      reply = "**Placing a Custom Order:**\n1. Visit Queenscustoms.shop and select your item\n2. Click **Customize** and upload your design or describe your vision\n3. Choose your size, color, and quantity\n4. We'll send you a **digital proof** for approval before production\n5. Production takes 5–10 business days, rush available in 2–3 days 👑";
+    } else if (q.includes("shipping") || q.includes("deliver")) {
+      reply = "**Shipping Info:**\n- Standard: 5–7 business days after production (FREE over $75)\n- Express: 2–3 business days\n- We ship domestically & internationally\n- Tracking number sent via email once shipped 📦";
+    } else if (q.includes("return") || q.includes("refund") || q.includes("exchange")) {
+      reply = "**Returns & Refunds:**\nCustom items are non-refundable once production starts — but we send a proof first so you can approve everything! If there's a defect or wrong item, we'll replace it free. Contact us within 48 hours of delivery with photos. 💌";
+    } else if (q.includes("creator") || q.includes("founder") || q.includes("owner") || q.includes("who") || q.includes("about")) {
+      reply = "**About the Creator:**\nQueenscustoms.shop was built by a passionate designer and entrepreneur who believes everyone deserves custom, one-of-a-kind pieces that reflect *you*. She personally handles custom requests to ensure every client gets a royal-level experience. Her motto: *\"You deserve the custom treatment — because you're a queen too.\"* 👑";
+    } else if (q.includes("product") || q.includes("what do you") || q.includes("offer") || q.includes("sell")) {
+      reply = "**Our Products:**\n- Custom Apparel (tees, hoodies, jackets)\n- Custom Accessories (bags, hats, jewelry)\n- Personalized Gifts for any occasion\n- Custom Home Décor\n- Event & Brand packages\n\nVisit Queenscustoms.shop to browse everything! ✨";
+    } else if (q.includes("price") || q.includes("cost") || q.includes("how much")) {
+      reply = "Pricing varies by item and customization. Check each product page on Queenscustoms.shop for exact prices. Bulk discounts available for 10+ items, and we offer a **free design consultation** for orders over $50! Want me to connect you with our team for a quote?";
+    } else if (q.includes("rush") || q.includes("urgent") || q.includes("fast")) {
+      reply = "**Rush Orders:** We offer 2–3 business day production for urgent orders! A rush fee (typically 30–50% of base order) applies. Select the rush option at checkout, or submit a support ticket if you need something extra special. 👑";
+    } else if (q.includes("track") || q.includes("where is my order") || q.includes("order status")) {
+      reply = "For order tracking, check the email we sent when your order shipped — it has your tracking number! If you didn't receive it or can't find it, submit a support ticket and our team will look into it right away. 📦";
+    } else if (q.includes("contact") || q.includes("email") || q.includes("reach")) {
+      reply = "**Contact Us:**\n- Submit a support ticket right here in this chat\n- Email: support@queenscustoms.shop\n- Instagram: @queenscustoms\n- Business hours: Mon–Sat 9AM–6PM EST\n\nResponse time: 24–48 hours 💌";
+    } else {
+      reply = "Hey gorgeous! 👑 I'm Queen — I can help you with:\n\n- **Custom orders** and how they work\n- **Products** we offer\n- **Shipping** and delivery info\n- **Returns** and exchanges\n- **The creator** and the brand story\n- **Support tickets** for specific issues\n\nWhat would you like to know?";
+    }
+
+    return res.json({ reply });
+  } catch (err: any) {
+    console.error("Queen chat error:", err);
+    res.status(500).json({ error: err.message || "Chat service error." });
+  }
+});
+
+// POST /api/queen-ticket — Submit a support ticket
+app.post("/api/queen-ticket", (req, res) => {
+  const { name, email, subject, message, category } = req.body as {
+    name: string; email: string; subject: string; message: string; category: string;
+  };
+
+  if (!name?.trim() || !email?.trim() || !subject?.trim() || !message?.trim()) {
+    return res.status(400).json({ error: "Name, email, subject, and message are required." });
+  }
+
+  if (!/\S+@\S+\.\S+/.test(email)) {
+    return res.status(400).json({ error: "A valid email address is required." });
+  }
+
+  const tickets = loadTickets();
+  const ticket: SupportTicket = {
+    id: crypto.randomUUID(),
+    name: name.trim(),
+    email: email.trim().toLowerCase(),
+    subject: subject.trim(),
+    message: message.trim(),
+    category: category || "general",
+    createdAt: new Date().toISOString(),
+    status: "open",
+  };
+  tickets.push(ticket);
+  saveTickets(tickets);
+
+  console.log(`[Queen Ticket] #${ticket.id} from ${ticket.email}: ${ticket.subject}`);
+  return res.json({ success: true, ticketId: ticket.id });
+});
+
+// GET /api/admin/queen-tickets — Admin: view all support tickets
+app.get("/api/admin/queen-tickets", requireAuth, (req, res) => {
+  const tickets = loadTickets();
+  return res.json({ total: tickets.length, tickets });
+});
+
 // Setup development or production server modes
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
