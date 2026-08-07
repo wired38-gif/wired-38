@@ -1,4 +1,7 @@
 services:
+  # ── MYK Super Agent (SA.Mykbrands.com) ───────────────────────────────────────
+  # Live URL: https://myk-super-agent-1.onrender.com
+  # Custom domain: SA.Mykbrands.com (CNAME → myk-super-agent-1.onrender.com)
   - type: web
     name: myk-super-agent
     runtime: node
