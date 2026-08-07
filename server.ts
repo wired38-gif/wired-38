@@ -341,21 +341,42 @@ app.delete("/api/sa/conversations/:id", requireAuth, (req, res) => {
 });
 
 app.post("/api/sa/conversations/:id/messages", requireAuth, async (req, res) => {
-  const { message, model: requestedModel } = req.body as { message: string; model?: string };
-  if (!message) return res.status(400).json({ error: "Message required" });
+  const {
+    message,
+    model: requestedModel,
+    attachments = [],
+  } = req.body as {
+    message: string;
+    model?: string;
+    attachments?: Array<{ data: string; mimeType: string; fileName: string }>;
+  };
+
+  if (!message && !attachments.length) return res.status(400).json({ error: "Message or attachment required" });
+
+  const text = message || "Please analyze the attached file(s).";
 
   let conv = loadConversation(req.params.id) ?? {
     id: req.params.id,
-    title: message.slice(0, 60),
+    title: text.slice(0, 60),
     messages: [] as SAMessage[],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
-  if (conv.messages.length === 0) conv.title = message.slice(0, 60) + (message.length > 60 ? "…" : "");
-  conv.messages.push({ id: crypto.randomUUID(), role: "user", content: message, timestamp: new Date().toISOString() });
+  if (conv.messages.length === 0) conv.title = text.slice(0, 60) + (text.length > 60 ? "…" : "");
 
-  const relevant = searchKB(message, loadAllKBEntries(), 5);
+  // Store user message — include attachment metadata in content for context
+  const attachmentNote = attachments.length
+    ? `\n[Attachments: ${attachments.map(a => a.fileName).join(", ")}]`
+    : "";
+  conv.messages.push({
+    id: crypto.randomUUID(),
+    role: "user",
+    content: text + attachmentNote,
+    timestamp: new Date().toISOString(),
+  });
+
+  const relevant = searchKB(text, loadAllKBEntries(), 5);
   const context = relevant.length
     ? `\n\n--- KNOWLEDGE BASE CONTEXT ---\n${relevant.map(e => `[${e.title}]: ${e.content.slice(0, 500)}`).join("\n\n")}\n---`
     : "";
@@ -366,10 +387,12 @@ app.post("/api/sa/conversations/:id/messages", requireAuth, async (req, res) => 
 
   try {
     if (requestedModel?.startsWith("apple/") || requestedModel === "apple-foundationmodel") {
+      // Apple AI doesn't support attachments — text only
       const msgs = conv.messages.slice(-10, -1).map(m => ({ role: m.role, content: m.content }));
       replyText = await chatWithAppleAI(system, msgs);
       usedModel = "apple/foundation";
     } else if (requestedModel?.startsWith("ollama/")) {
+      // Ollama — text only for now
       const msgs = conv.messages.slice(-20, -1).map(m => ({ role: m.role, content: m.content }));
       replyText = await chatWithOllama(requestedModel.replace("ollama/", ""), system, msgs);
       usedModel = requestedModel;
@@ -379,10 +402,32 @@ app.post("/api/sa/conversations/:id/messages", requireAuth, async (req, res) => 
         parts: [{ text: m.content }],
       }));
       const gemini = getGemini();
-      const chat = gemini.chats.create({ model: requestedModel || "gemini-2.0-flash", config: { systemInstruction: system }, history });
-      const r = await chat.sendMessage({ message });
-      replyText = r.text ?? "";
-      usedModel = requestedModel || "gemini-2.0-flash";
+      const modelId = requestedModel || "gemini-2.0-flash";
+
+      if (attachments.length > 0) {
+        // Multimodal: use generateContent with inline data
+        const userParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+          { text: text },
+          ...attachments.map(a => ({
+            inlineData: { mimeType: a.mimeType, data: a.data },
+          })),
+        ];
+        const r = await gemini.models.generateContent({
+          model: modelId,
+          contents: [
+            ...history.map(h => ({ role: h.role, parts: h.parts })),
+            { role: "user" as const, parts: userParts },
+          ],
+          config: { systemInstruction: system },
+        });
+        replyText = r.text ?? "";
+      } else {
+        // Text-only: use chat session
+        const chat = gemini.chats.create({ model: modelId, config: { systemInstruction: system }, history });
+        const r = await chat.sendMessage({ message: text });
+        replyText = r.text ?? "";
+      }
+      usedModel = modelId;
     } else {
       replyText = "⚠️ No AI model configured. Set GEMINI_API_KEY in env vars, or run Ollama locally and select an Ollama model.";
       usedModel = "none";
@@ -391,7 +436,13 @@ app.post("/api/sa/conversations/:id/messages", requireAuth, async (req, res) => 
     replyText = `⚠️ Error: ${err.message}`;
   }
 
-  const assistantMsg: SAMessage = { id: crypto.randomUUID(), role: "assistant", content: replyText, timestamp: new Date().toISOString(), model: usedModel };
+  const assistantMsg: SAMessage = {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content: replyText,
+    timestamp: new Date().toISOString(),
+    model: usedModel,
+  };
   conv.messages.push(assistantMsg);
   conv.updatedAt = new Date().toISOString();
   saveConversation(conv);

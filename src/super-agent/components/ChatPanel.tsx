@@ -1,11 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Send, Bot, User, Copy, Check,
-  RefreshCw, Sparkles, AlertCircle, Brain
+  RefreshCw, AlertCircle, Brain, Paperclip, X, FileText, Image
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { SAConversation, SAMessage, OptimizeResult } from "../types";
 import { SmartRouter } from "./SmartRouter";
+
+interface Attachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  data: string; // base64
+  preview?: string; // object URL for images
+  size: number;
+}
 
 interface Props {
   conversationId: string | null;
@@ -44,7 +53,18 @@ function MessageBubble({ msg, isLast }: { msg: SAMessage; isLast: boolean }) {
       <div className="flex justify-end">
         <div className="max-w-[80%] lg:max-w-[70%]">
           <div className="bg-violet-600/20 border border-violet-500/30 rounded-2xl rounded-br-sm px-4 py-3">
-            <p className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+            <p className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+              {msg.content.replace(/\n\[Attachments:.*?\]$/, "")}
+            </p>
+            {/\[Attachments: (.+?)\]/.exec(msg.content) && (
+              <div className="mt-1.5 flex gap-1 flex-wrap">
+                {/\[Attachments: (.+?)\]/.exec(msg.content)?.[1].split(", ").map(f => (
+                  <span key={f} className="text-[10px] px-1.5 py-0.5 bg-violet-500/20 text-violet-300 rounded-md flex items-center gap-1">
+                    <Paperclip size={8} />{f}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center justify-end gap-2 mt-1">
             <span className="text-[10px] text-slate-600">
@@ -102,6 +122,8 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [smart, setSmart] = useState<SmartState>({ loading: false, result: null });
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -174,7 +196,11 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
       const r = await fetch(`/api/sa/conversations/${targetId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, model: selectedModel }),
+        body: JSON.stringify({
+          message: text,
+          model: selectedModel,
+          attachments: attachments.map(a => ({ data: a.data, mimeType: a.mimeType, fileName: a.fileName })),
+        }),
       });
 
       if (!r.ok) {
@@ -186,6 +212,7 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
 
       // Reload the full conversation to get accurate state
       await loadConversation(targetId!);
+      setAttachments([]);
       onConversationUpdated();
     } catch (err: any) {
       setError(err.message || "Failed to send message");
@@ -211,6 +238,33 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
     sendMessage(input);
     setInput("");
   }, [input, sendMessage]);
+
+  const handleFiles = useCallback((files: FileList | null) => {
+    if (!files) return;
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB per file
+    Array.from(files).forEach(file => {
+      if (file.size > MAX_SIZE) { alert(`${file.name} is too large (max 10MB)`); return; }
+      const reader = new FileReader();
+      reader.onload = e => {
+        const dataUrl = e.target?.result as string;
+        const base64 = dataUrl.split(",")[1];
+        const att: Attachment = {
+          id: crypto.randomUUID(),
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          data: base64,
+          preview: file.type.startsWith("image/") ? dataUrl : undefined,
+          size: file.size,
+        };
+        setAttachments(prev => [...prev, att]);
+      };
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+  }, []);
 
   const analyzePrompt = useCallback(async () => {
     if (!input.trim()) return;
@@ -330,6 +384,32 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
       {/* Input area */}
       <div className="flex-shrink-0 border-t border-slate-800 bg-slate-950">
         <div className="max-w-4xl mx-auto px-4 py-3">
+
+          {/* Attachment previews */}
+          {attachments.length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-2">
+              {attachments.map(att => (
+                <div
+                  key={att.id}
+                  className="relative group flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 max-w-[160px]"
+                >
+                  {att.preview ? (
+                    <img src={att.preview} alt={att.fileName} className="w-8 h-8 object-cover rounded" />
+                  ) : (
+                    <FileText size={16} className="text-violet-400 flex-shrink-0" />
+                  )}
+                  <span className="text-[10px] text-slate-300 truncate">{att.fileName}</span>
+                  <button
+                    onClick={() => removeAttachment(att.id)}
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-slate-600 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <X size={8} className="text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex gap-3 items-end">
             <div className="flex-1 bg-slate-800 border border-slate-700 focus-within:border-violet-500 rounded-xl transition-colors">
               <textarea
@@ -343,7 +423,28 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
                 style={{ minHeight: "46px", maxHeight: "200px" }}
               />
               {/* Toolbar */}
-              <div className="flex items-center gap-2 px-3 pb-2">
+              <div className="flex items-center gap-3 px-3 pb-2">
+                {/* Attach file */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Attach image or file"
+                  className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-violet-400 transition-colors"
+                >
+                  <Paperclip size={12} />
+                  {attachments.length > 0 && (
+                    <span className="text-[9px] bg-violet-600 text-white rounded-full px-1">{attachments.length}</span>
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,.txt,.md,.csv,.json,.js,.ts,.py"
+                  onChange={e => handleFiles(e.target.files)}
+                  className="hidden"
+                />
+
+                {/* Analyze */}
                 <button
                   onClick={analyzePrompt}
                   disabled={!input.trim() || smart.loading}
@@ -357,8 +458,10 @@ export function ChatPanel({ conversationId, selectedModel, onConversationCreated
                   )}
                   Analyze
                 </button>
+
                 <span className="text-slate-700 text-[10px] ml-auto">
                   {input.length > 0 && `${input.length} chars`}
+                  {attachments.length > 0 && ` · ${attachments.length} file${attachments.length > 1 ? "s" : ""}`}
                 </span>
               </div>
             </div>
