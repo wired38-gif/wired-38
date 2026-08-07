@@ -19,6 +19,7 @@ import { VideoPanel } from "./components/entrata/VideoPanel";
 import { ChatAssistant } from "./components/entrata/ChatAssistant";
 import { AccountSetup, AccountData } from "./components/entrata/AccountSetup";
 import { Certificate } from "./components/entrata/Certificate";
+import { QueenChatAgent } from "./components/QueenChatAgent";
 
 const STORAGE_KEY = "entrata_training_progress";
 const ACCOUNT_KEY = "entrata_account";
@@ -638,6 +639,9 @@ export default function App() {
         {/* AI Chat Assistant */}
         <ChatAssistant onNavigate={handleChatNavigate} />
 
+        {/* Queen Chat Agent */}
+        <QueenChatAgent />
+
         {/* Certificate Modal */}
         {showCertificate && (
           <Certificate
@@ -749,6 +753,9 @@ export default function App() {
 
       {/* AI Chat Assistant */}
       <ChatAssistant onNavigate={handleChatNavigate} />
+
+      {/* Queen Chat Agent */}
+      <QueenChatAgent />
 
       {/* Certificate Modal */}
       {showCertificate && (
