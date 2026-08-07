@@ -277,6 +277,13 @@ export function QueenChatAgent() {
   const historyRef = useRef<Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -361,7 +368,8 @@ export function QueenChatAgent() {
       if (data.success && data.message) {
         setTicketSuccess(data.message);
         // After a moment, go back to chat and add a confirmation message
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           setPanel("chat");
           setTicketSuccess(null);
           setMessages(prev => [
@@ -376,11 +384,13 @@ export function QueenChatAgent() {
         }, 2500);
       } else {
         setTicketSuccess(data.error ?? "Something went wrong. Please try again.");
-        setTimeout(() => setTicketSuccess(null), 3000);
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setTicketSuccess(null), 3000);
       }
     } catch {
       setTicketSuccess("Network error. Please try again.");
-      setTimeout(() => setTicketSuccess(null), 3000);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setTicketSuccess(null), 3000);
     } finally {
       setIsSubmittingTicket(false);
     }
