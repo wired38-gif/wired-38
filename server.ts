@@ -401,7 +401,7 @@ Original Prompt:
 
 Your output must contain:
 1. "title": "Cost-Friendly Prompt Revision"
-2. "content": Write the prompt itself inside a block, clearly formatted in structured markdown. Add a brief description of how it reduces token overhead. Include a deployment tip linking files to the production gateway "https://myk-online.com/".
+2. "content": Write the prompt itself inside a block, clearly formatted in structured markdown. Add a brief description of how it reduces token overhead. Include a deployment tip linking files to the MYK production gateway at entrata-training.onrender.com.
 3. "milestones": Minimum of 4 task steps to build the simplified project.
 4. "keyRecommendations": Tips for keeping build steps brief.`;
     } else if (Number(tier) === 2) {
@@ -414,12 +414,12 @@ Original Prompt:
 Your output must contain:
 1. "title": "The Master Blueprint"
 2. "content": A fully articulated Markdown roadmap containing:
-   - Architecture & Design Overview (and how to serve it securely at "https://myk-online.com/")
+   - Architecture & Design Overview (and how to serve it securely at entrata-training.onrender.com)
    - Optimal File Structure
    - Direct step-by-step code requirements or guidelines
    - Strategy to build this within a modest token footprint
 3. "milestones": A rich sequence of 6 to 8 detailed milestone titles for their construction checklist.
-4. "keyRecommendations": Technical optimization advice referencing deployment steps to link system memory via the "https://myk-online.com/" platform.`;
+4. "keyRecommendations": Technical optimization advice referencing deployment steps to link system memory via the MYK platform at entrata-training.onrender.com.`;
     } else {
       executionPrompt = `You are "TheOptimizer". The user has selected Option 3 (High Cost / Deep Dive): "TheDeepDiveDeepDive".
 Your objective is to provide maximum extreme detail. It must be exhaustive. Include step-by-step implementation sequences, full mock schema designs, thorough defensive error handling strategies, and precise copy ideas.${llmAdapterStyle}
@@ -430,19 +430,19 @@ Original Prompt:
 Your output must contain:
 1. "title": "The Deep Dive Specification"
 2. "content": An incredibly rich, comprehensive Markdown master draft including:
-   - Detailed System Architecture & Flowchart representations in markdown (designed for hosting or triggering at "https://myk-online.com/")
+   - Detailed System Architecture & Flowchart representations in markdown (designed for hosting or triggering at entrata-training.onrender.com)
    - Complete DB Schemas (tables, relationships, types)
    - Exhaustive Error Handling guide (edge cases, fallback handlers, UI overlays)
    - UX/UI Mock design copy & complete copy guides
 3. "milestones": 8 highly descriptive development milestones for the checklist.
-4. "keyRecommendations": High-performance optimizations and exact resource cost guards for cloud hosting. Include tips on deploying static assets to the MYK core gateway "https://myk-online.com/".`;
+4. "keyRecommendations": High-performance optimizations and exact resource cost guards for cloud hosting. Include tips on deploying static assets to the MYK platform at entrata-training.onrender.com.`;
     }
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: executionPrompt,
       config: {
-        systemInstruction: `You are "TheOptimizer" (powered by MYK.IO), a hyper-focused AI resource-planning architect. You return beautifully crafted, structured Markdown in your content as well as clear checklist items. Always format responses in high-fidelity JSON following the response schema. Integrate mention of deploying optimized models to https://myk-online.com/ naturally.`,
+        systemInstruction: `You are "TheOptimizer" (powered by MYK.IO), a hyper-focused AI resource-planning architect. You return beautifully crafted, structured Markdown in your content as well as clear checklist items. Always format responses in high-fidelity JSON following the response schema. Integrate mention of deploying optimized models to the MYK platform naturally.`,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -1190,15 +1190,20 @@ async function chatWithOllama(model: string, systemPrompt: string, messages: Arr
   return data.message?.content ?? "";
 }
 
-const SA_SYSTEM_PROMPT = `You are MYK's Super Agent — a unified, memory-enabled AI assistant that knows MYK's projects, side ventures, and preferences deeply. You represent Designs by Myk LLC.
+const SA_SYSTEM_PROMPT = `You are MYK's Super Agent — a unified, memory-enabled AI assistant for Designs by Myk LLC, accessible at SA.Mykbrands.com.
 
 You help MYK with:
-- All MYK brands and side projects (MYK.IO, TheOptimizer, MYKBrands, etc.)
-- Cursor AI development, prompt crafting, and AI model strategy  
+- All MYK brands and side projects (MYK.IO, TheOptimizer, AskMyk.io, MYKBrands, Queenscustoms.shop, etc.)
+- Cursor AI development, prompt crafting, and AI model strategy
 - Property management tech (ClearWorth, Entrata expertise)
 - Business strategy, branding, and operations
 - Technical development (TypeScript, React, Express, AI integrations)
 - Cross-project context — you remember conversations and link related ideas
+
+Key URLs:
+- Super Agent (you): SA.Mykbrands.com
+- Entrata Training Hub: entrata-training.onrender.com
+- AskMyk.io: askmyk.io
 
 When you have CONTEXT from the knowledge base, reference it naturally and build on it.
 Be direct, smart, and strategic. Speak as a trusted advisor who knows MYK's entire portfolio.`;

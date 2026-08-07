@@ -1,5 +1,8 @@
 services:
-  # ── Entrata Training Hub (entrata-training.onrender.com) ─────────────────────
+  # ── Entrata Training Hub ──────────────────────────────────────────────────────
+  # Serves: Entrata training simulator, TheOptimizer, Queen AI chat
+  # Branch: main
+  # URL: entrata-training.onrender.com (add custom domain in Render dashboard)
   - type: web
     name: entrata-training
     runtime: node
@@ -27,24 +30,24 @@ services:
       sizeGB: 1
 
   # ── MYK Super Agent (SA.Mykbrands.com) ───────────────────────────────────────
+  # Serves: Super Agent ONLY — no Entrata code
+  # Branch: super-agent-standalone (NOT main)
+  # URL: myk-super-agent-1.onrender.com → SA.Mykbrands.com
+  # NOTE: This service is deployed from the super-agent-standalone branch.
+  #       Render connects to that branch separately — this entry is for reference only.
   - type: web
     name: myk-super-agent
     runtime: node
     plan: free
     buildCommand: npm install && npm run build
     startCommand: node dist/server.cjs
+    branch: super-agent-standalone
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
-      - key: SA_ONLY_MODE
-        value: "true"
       - key: GEMINI_API_KEY
-        sync: false
-      - key: ADMIN_USERNAME
-        sync: false
-      - key: ADMIN_PASSWORD
         sync: false
       - key: AUTH_SECRET
         sync: false
