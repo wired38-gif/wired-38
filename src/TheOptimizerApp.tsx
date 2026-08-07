@@ -539,12 +539,7 @@ export default function TheOptimizerApp() {
         </div>
 
         <div className="flex items-center gap-3">
-          <a
-            href="/"
-            className="text-xs text-slate-600 hover:text-slate-300 transition-colors border border-slate-800 hover:border-slate-600 rounded-lg px-3 py-1.5"
-          >
-            ← Entrata Training
-          </a>
+          <span className="text-[11px] text-slate-600">research.mykbrands.com</span>
           <button onClick={handleLogout}
             className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white transition-colors border border-slate-800 hover:border-slate-600 rounded-lg px-3 py-1.5">
             <LogOut size={12} />

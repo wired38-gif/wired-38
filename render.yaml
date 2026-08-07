@@ -1,14 +1,42 @@
 services:
+  # ─── Entrata Training Hub ────────────────────────────────────────────────────
   - type: web
     name: entrata-training
     runtime: node
     plan: free
     buildCommand: npm install && npm run build
     startCommand: node dist/server.cjs
-    # Custom domain: research.mykbrands.com
-    # To activate, add a CNAME record in your DNS:
-    #   research.mykbrands.com  CNAME  entrata-training.onrender.com
-    # Then add the domain in the Render dashboard → Settings → Custom Domains.
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: ACCESS_PINS
+        value: 4829,7392,1568,9047,3215,6784,2931,8456,5103,7620
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: INVITE_CODE
+        sync: false
+    disk:
+      name: training-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+
+  # ─── MYK.IO Optimizer — research.mykbrands.com ───────────────────────────────
+  # Completely separate service — no Entrata code, no Entrata data
+  # DNS: CNAME research.mykbrands.com → myk-optimizer.onrender.com
+  - type: web
+    name: myk-optimizer
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/optimizer-server.cjs
     domains:
       - research.mykbrands.com
     envVars:
@@ -16,34 +44,21 @@ services:
         value: production
       - key: PORT
         value: 10000
-      # ── App URL (used for WorkOS OAuth callbacks) ──────────────────────────
+      # URL used for WorkOS OAuth callback
       - key: APP_URL
         value: https://research.mykbrands.com
-      # ── Entrata Training — trainee PIN list ───────────────────────────────
-      - key: ACCESS_PINS
-        value: 4829,7392,1568,9047,3215,6784,2931,8456,5103,7620
-      # ── TheOptimizer (research.mykbrands.com/optimizer) ───────────────────
-      # 4-digit PIN to access the optimizer and research feed
+      # 4-digit PIN to access the optimizer (change anytime)
       - key: OPTIMIZER_PIN
         value: "8718"
-      # ── Gemini AI (required for analyze-prompt / refine-prompt) ───────────
+      # Gemini AI — required for Optimize tab (analyze/refine prompt)
       - key: GEMINI_API_KEY
         sync: false
-      # ── Admin credentials (fallback / legacy access) ──────────────────────
-      - key: ADMIN_USERNAME
-        sync: false
-      - key: ADMIN_PASSWORD
-        sync: false
+      # Session signing key — set to any long random string
       - key: AUTH_SECRET
         sync: false
-      # ── WorkOS SSO (optional — enables "Sign in with WorkOS" button) ──────
-      # Get these from https://dashboard.workos.com → API Keys
-      # Set WORKOS_REDIRECT_URI to: https://research.mykbrands.com/api/optimizer/workos/callback
+      # WorkOS SSO — optional, enables "Sign in with WorkOS" button
+      # Get from https://dashboard.workos.com → API Keys
       - key: WORKOS_API_KEY
         sync: false
       - key: WORKOS_CLIENT_ID
         sync: false
-    disk:
-      name: training-data
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1
