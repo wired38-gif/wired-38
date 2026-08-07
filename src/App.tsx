@@ -639,7 +639,7 @@ export default function App() {
         {/* AI Chat Assistant */}
         <ChatAssistant onNavigate={handleChatNavigate} />
 
-        {/* Queen — Queenscustoms.shop Chat Agent */}
+        {/* Queen Chat Agent */}
         <QueenChatAgent />
 
         {/* Certificate Modal */}
@@ -754,7 +754,7 @@ export default function App() {
       {/* AI Chat Assistant */}
       <ChatAssistant onNavigate={handleChatNavigate} />
 
-      {/* Queen — Queenscustoms.shop Chat Agent */}
+      {/* Queen Chat Agent */}
       <QueenChatAgent />
 
       {/* Certificate Modal */}
