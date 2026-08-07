@@ -5,6 +5,7 @@ import type { NextFunction, Request, Response } from "express";
 import { GoogleGenAI, Type } from "@google/genai";
 import { config as loadEnv } from "dotenv";
 import { createServer as createViteServer } from "vite";
+import { WorkOS } from "@workos-inc/node";
 
 import fs from "fs";
 
@@ -673,6 +674,302 @@ app.post("/api/entrata-chat", async (req, res) => {
   }
 });
 
+// ─── TheOptimizer / research.mykbrands.com Auth ──────────────────────────────
+
+// Lazy WorkOS client — only initialised when env vars are present
+let workosClient: WorkOS | null = null;
+function getWorkOS(): WorkOS | null {
+  if (workosClient) return workosClient;
+  const apiKey = process.env.WORKOS_API_KEY;
+  if (!apiKey) return null;
+  workosClient = new WorkOS(apiKey);
+  return workosClient;
+}
+
+function isWorkOSConfigured(): boolean {
+  return Boolean(process.env.WORKOS_API_KEY && process.env.WORKOS_CLIENT_ID);
+}
+
+/** Return the correct app base URL for OAuth callbacks */
+function getAppBaseUrl(req: Request): string {
+  // Prefer explicit env var (set in production to https://research.mykbrands.com)
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  const proto = req.secure || req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
+  return `${proto}://${req.headers.host}`;
+}
+
+// Check which optimizer auth methods are available
+app.get("/api/optimizer/config", (_req, res) => {
+  res.json({
+    pinEnabled: true,
+    workosEnabled: isWorkOSConfigured(),
+  });
+});
+
+// PIN login for TheOptimizer (PIN stored in OPTIMIZER_PIN env var, default 8718)
+app.post("/api/optimizer/pin-login", (req, res) => {
+  const { pin } = req.body as { pin: string };
+  const correctPin = (process.env.OPTIMIZER_PIN ?? "8718").trim();
+
+  if (!pin || pin.trim() !== correctPin) {
+    res.status(401).json({ error: "Incorrect PIN. Please try again." });
+    return;
+  }
+
+  // Reuse the same session mechanism as the admin login
+  if (!isAuthConfigured()) {
+    // Auth not fully configured — issue a simple signed token using the PIN as secret
+    const payload = { sub: "optimizer", exp: Date.now() + SESSION_TTL_SECONDS * 1000 };
+    const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    const sig = crypto.createHmac("sha256", correctPin).update(encoded).digest("base64url");
+    const token = `${encoded}.${sig}`;
+    res.setHeader("Set-Cookie", buildSessionCookie(token, req));
+  } else {
+    const token = createSessionToken("optimizer-pin");
+    res.setHeader("Set-Cookie", buildSessionCookie(token, req));
+  }
+
+  res.json({ authenticated: true, method: "pin" });
+});
+
+// WorkOS: get authorization URL (redirect user to WorkOS login)
+app.get("/api/optimizer/workos/auth", (req, res) => {
+  const wos = getWorkOS();
+  if (!wos) {
+    res.status(503).json({ error: "WorkOS is not configured on this server." });
+    return;
+  }
+
+  const redirectUri = `${getAppBaseUrl(req)}/api/optimizer/workos/callback`;
+  const authUrl = wos.userManagement.getAuthorizationUrl({
+    clientId: process.env.WORKOS_CLIENT_ID!,
+    redirectUri,
+    provider: "authkit",
+  });
+
+  res.json({ authUrl });
+});
+
+// WorkOS: OAuth callback — exchange code for session
+app.get("/api/optimizer/workos/callback", async (req, res) => {
+  const wos = getWorkOS();
+  if (!wos) {
+    res.status(503).send("WorkOS is not configured.");
+    return;
+  }
+
+  const code = req.query.code as string;
+  if (!code) {
+    res.status(400).send("Missing authorization code.");
+    return;
+  }
+
+  try {
+    const { user } = await wos.userManagement.authenticateWithCode({
+      clientId: process.env.WORKOS_CLIENT_ID!,
+      code,
+    });
+
+    console.log(`WorkOS login: ${user.email}`);
+    const token = createSessionToken(user.email);
+    res.setHeader("Set-Cookie", buildSessionCookie(token, req));
+    // Redirect to the optimizer UI after successful login
+    res.redirect("/optimizer");
+  } catch (err: any) {
+    console.error("WorkOS callback error:", err);
+    res.redirect(`/optimizer?auth_error=${encodeURIComponent(err.message || "WorkOS login failed")}`);
+  }
+});
+
+// ─── AI Research Feed Endpoint ────────────────────────────────────────────────
+
+interface ResearchArticle {
+  id: string;
+  title: string;
+  url: string;
+  publishedAt: string;
+  summary: string;
+  source: string;
+  sourceUrl: string;
+  category: string;
+  tags: string[];
+  relevant: boolean;
+}
+
+interface FetchedFeed {
+  siteId: string;
+  name: string;
+  articles: ResearchArticle[];
+  error?: string;
+}
+
+// Simple RSS/Atom XML parser — extracts <item> or <entry> elements
+function parseRssFeed(xml: string, siteId: string, siteName: string, siteUrl: string): ResearchArticle[] {
+  const articles: ResearchArticle[] = [];
+
+  // Support both RSS <item> and Atom <entry>
+  const itemPattern = /<(?:item|entry)[\s>]([\s\S]*?)<\/(?:item|entry)>/g;
+  let match: RegExpExecArray | null;
+  let count = 0;
+
+  while ((match = itemPattern.exec(xml)) !== null && count < 10) {
+    const block = match[1];
+
+    const title = (/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/.exec(block)?.[1] ?? "")
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").trim();
+
+    const link =
+      /<link[^>]*href="([^"]+)"/.exec(block)?.[1] ??
+      /<link[^>]*>(https?:\/\/[^\s<]+)<\/link>/.exec(block)?.[1] ?? "";
+
+    const pubDate =
+      /<pubDate>([\s\S]*?)<\/pubDate>/.exec(block)?.[1] ??
+      /<published>([\s\S]*?)<\/published>/.exec(block)?.[1] ??
+      /<updated>([\s\S]*?)<\/updated>/.exec(block)?.[1] ?? "";
+
+    const description =
+      (/<description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/.exec(block)?.[1] ??
+       /<summary[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/summary>/.exec(block)?.[1] ?? "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").trim()
+        .slice(0, 500);
+
+    if (!title || !link) continue;
+
+    articles.push({
+      id: `${siteId}-${count}`,
+      title,
+      url: link,
+      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+      summary: description,
+      source: siteName,
+      sourceUrl: siteUrl,
+      category: "substack",
+      tags: [],
+      relevant: true,
+    });
+
+    count++;
+  }
+
+  return articles;
+}
+
+// Fetch RSS feed with timeout
+async function fetchFeed(rssUrl: string): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(rssUrl, {
+      signal: controller.signal,
+      headers: { "User-Agent": "MYK.IO-ResearchBot/1.0 (+https://myk-online.com)" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// AI_RESEARCH_TOPICS for relevance filtering
+const AI_RESEARCH_TOPICS_SERVER = [
+  "ai token", "token pricing", "free ai", "microsoft mai", "mai-code", "mai-1",
+  "new model", "open-source llm", "prompt engineering", "ai cost", "free tier",
+  "copilot", "claude", "gemini", "gpt", "llama", "mistral", "ai news",
+  "ai tool", "ai release", "large language model",
+  // new: token-optimization + free-model topics
+  "openrouter", "google ai studio", "api credit", "token optimization",
+  "context caching", "prompt cache", "system prompt", "token budget",
+  "free api", "zero cost", "open source model", "local llm", "free model",
+  "mckay wrigley", "simon willison", "allie miller",
+];
+
+function isArticleRelevant(article: ResearchArticle): boolean {
+  const text = (article.title + " " + article.summary).toLowerCase();
+  return AI_RESEARCH_TOPICS_SERVER.some(t => text.includes(t));
+}
+
+// Inline research sites config (mirrors src/data/researchSites.ts for server use)
+const SERVER_RESEARCH_SITES = [
+  // Substack newsletters
+  { id: "bens-bites",        name: "Ben's Bites",           url: "https://www.bensbites.com",                     rssUrl: "https://bensbites.beehiiv.com/feed" },
+  { id: "one-useful-thing",  name: "One Useful Thing",      url: "https://www.oneusefulthing.org",                rssUrl: "https://www.oneusefulthing.org/feed" },
+  { id: "interconnects",     name: "Interconnects",         url: "https://www.interconnects.ai",                  rssUrl: "https://www.interconnects.ai/feed" },
+  { id: "import-ai",         name: "Import AI",             url: "https://jack-clark.net",                        rssUrl: "https://jack-clark.net/feed" },
+  { id: "ai-supremacy",      name: "AI Supremacy",          url: "https://aisupremacy.substack.com",              rssUrl: "https://aisupremacy.substack.com/feed" },
+  // Token-optimization expert blogs
+  { id: "simon-willison",    name: "Simon Willison's Blog", url: "https://simonwillison.net",                     rssUrl: "https://simonwillison.net/atom/everything/" },
+  { id: "openrouter-blog",   name: "OpenRouter Blog",       url: "https://openrouter.ai/blog",                    rssUrl: "https://openrouter.ai/blog/rss.xml" },
+  // Community feeds
+  { id: "hn-ai",             name: "Hacker News — AI",      url: "https://news.ycombinator.com",                  rssUrl: "https://hnrss.org/newest?q=AI+tokens+OR+free+API+OR+open+source+LLM+OR+prompt&count=20" },
+  { id: "reddit-localllama", name: "r/LocalLLaMA",          url: "https://www.reddit.com/r/LocalLLaMA",           rssUrl: "https://www.reddit.com/r/LocalLLaMA/.rss?limit=15" },
+  { id: "reddit-prompt",     name: "r/PromptEngineering",   url: "https://www.reddit.com/r/PromptEngineering",    rssUrl: "https://www.reddit.com/r/PromptEngineering/.rss?limit=15" },
+  // Official tech blogs
+  { id: "ms-ai-blog",        name: "Microsoft AI Blog",     url: "https://blogs.microsoft.com/ai",                rssUrl: "https://blogs.microsoft.com/ai/feed" },
+  { id: "openai-blog",       name: "OpenAI News",           url: "https://openai.com/news",                       rssUrl: "https://openai.com/news/rss.xml" },
+  { id: "google-ai-blog",    name: "Google AI Blog",        url: "https://blog.google/technology/ai",             rssUrl: "https://blog.google/technology/ai/rss" },
+];
+
+// In-memory cache: articles per site, keyed by siteId, with a TTL
+const feedCache: Map<string, { articles: ResearchArticle[]; fetchedAt: number }> = new Map();
+const FEED_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+app.get("/api/ai-research", async (req, res) => {
+  try {
+    const forceRefresh = req.query.refresh === "true";
+    const now = Date.now();
+
+    // Fetch all configured feeds in parallel
+    const feedPromises = SERVER_RESEARCH_SITES.map(async (site) => {
+      const cached = feedCache.get(site.id);
+      if (!forceRefresh && cached && now - cached.fetchedAt < FEED_CACHE_TTL) {
+        return { siteId: site.id, name: site.name, articles: cached.articles } as FetchedFeed;
+      }
+
+      try {
+        const xml = await fetchFeed(site.rssUrl);
+        const articles = parseRssFeed(xml, site.id, site.name, site.url);
+        feedCache.set(site.id, { articles, fetchedAt: now });
+        return { siteId: site.id, name: site.name, articles } as FetchedFeed;
+      } catch (err: any) {
+        const cached = feedCache.get(site.id);
+        if (cached) return { siteId: site.id, name: site.name, articles: cached.articles } as FetchedFeed;
+        return { siteId: site.id, name: site.name, articles: [], error: err.message } as FetchedFeed;
+      }
+    });
+
+    const feeds = await Promise.all(feedPromises);
+
+    // Flatten, mark relevance, sort by date
+    let allArticles: ResearchArticle[] = feeds.flatMap(f => f.articles);
+    allArticles = allArticles.map(a => ({ ...a, relevant: isArticleRelevant(a) }));
+    allArticles.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+
+    const relevant = allArticles.filter(a => a.relevant);
+    const other    = allArticles.filter(a => !a.relevant);
+
+    const errors = feeds.filter(f => f.error).map(f => ({ site: f.name, error: f.error }));
+
+    res.json({
+      articles: [...relevant, ...other].slice(0, 40),
+      relevantCount: relevant.length,
+      totalCount: allArticles.length,
+      sources: SERVER_RESEARCH_SITES.map(s => ({ id: s.id, name: s.name, url: s.url })),
+      fetchedAt: new Date().toISOString(),
+      errors: errors.length ? errors : undefined,
+    });
+  } catch (err: any) {
+    console.error("AI research feed error:", err);
+    res.status(500).json({ error: err.message || "Failed to fetch research feed." });
+  }
+});
+
+// Return the configured research sites list
+app.get("/api/ai-research/sites", (_req, res) => {
+  res.json({ sites: SERVER_RESEARCH_SITES });
+});
+
 // Setup development or production server modes
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
@@ -685,6 +982,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
+    // Both / and /optimizer are served by the same SPA index.html — React handles the routing
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });

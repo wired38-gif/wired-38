@@ -1,4 +1,5 @@
 services:
+  # ─── Entrata Training Hub ────────────────────────────────────────────────────
   - type: web
     name: entrata-training
     runtime: node
@@ -20,7 +21,44 @@ services:
         sync: false
       - key: AUTH_SECRET
         sync: false
+      - key: INVITE_CODE
+        sync: false
     disk:
       name: training-data
       mountPath: /opt/render/project/src/data
       sizeGB: 1
+
+  # ─── MYK.IO Optimizer — research.mykbrands.com ───────────────────────────────
+  # Completely separate service — no Entrata code, no Entrata data
+  # DNS: CNAME research.mykbrands.com → myk-optimizer.onrender.com
+  - type: web
+    name: myk-optimizer
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/optimizer-server.cjs
+    domains:
+      - research.mykbrands.com
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # URL used for WorkOS OAuth callback
+      - key: APP_URL
+        value: https://research.mykbrands.com
+      # 4-digit PIN to access the optimizer (change anytime)
+      - key: OPTIMIZER_PIN
+        value: "8718"
+      # Gemini AI — required for Optimize tab (analyze/refine prompt)
+      - key: GEMINI_API_KEY
+        sync: false
+      # Session signing key — set to any long random string
+      - key: AUTH_SECRET
+        sync: false
+      # WorkOS SSO — optional, enables "Sign in with WorkOS" button
+      # Get from https://dashboard.workos.com → API Keys
+      - key: WORKOS_API_KEY
+        sync: false
+      - key: WORKOS_CLIENT_ID
+        sync: false

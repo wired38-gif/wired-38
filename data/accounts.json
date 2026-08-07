@@ -1,0 +1,13 @@
+{
+  "demo@example.com": {
+    "id": "062c07b0-4184-414b-a64a-2d3fcff13223",
+    "email": "demo@example.com",
+    "name": "Demo User",
+    "property": "Demo Property",
+    "pin": "300373",
+    "createdAt": "2026-08-06T21:37:44.112Z",
+    "lastActiveAt": "2026-08-06T22:05:59.741Z",
+    "progress": {},
+    "completedWorkflows": []
+  }
+}
