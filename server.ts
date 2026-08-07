@@ -10,6 +10,12 @@ import fs from "fs";
 
 loadEnv({ path: [".env.local", ".env"] });
 
+// ─── Mode flag ────────────────────────────────────────────────────────────────
+// SA_ONLY_MODE=true → serve only the Super Agent (SA.Mykbrands.com deployment).
+// All Entrata training routes, analyze-prompt, refine-prompt, and trainee auth
+// are disabled. Only /api/sa/* is exposed.
+const SA_ONLY = process.env.SA_ONLY_MODE === "true";
+
 // ─── Self-Registration Training Auth System ───────────────────────────────────
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -200,6 +206,9 @@ function getAiClient() {
   }
   return aiClient;
 }
+
+// ─── Entrata Training Routes (disabled in SA_ONLY_MODE) ──────────────────────
+if (!SA_ONLY) {
 
 // 1. API Endpoint: Check backend status and key configuration
 app.get("/api/status", (req, res) => {
@@ -672,6 +681,8 @@ app.post("/api/entrata-chat", async (req, res) => {
     res.status(500).json({ error: err.message || "Chat service error." });
   }
 });
+
+} // end if (!SA_ONLY) — Entrata training routes
 
 // ─── Super Agent System ──────────────────────────────────────────────────────
 
@@ -1477,32 +1488,64 @@ async function startServer() {
       appType: "mpa",
     });
     app.use(vite.middlewares);
-    console.log("Vite middleware mounted for development.");
+
+    // In SA_ONLY dev mode redirect / to the Super Agent page
+    if (SA_ONLY) {
+      app.get("/", (req, res) => res.redirect("/super-agent.html"));
+    }
+
+    console.log(SA_ONLY
+      ? "Vite middleware mounted — SA_ONLY mode (Super Agent only)."
+      : "Vite middleware mounted for development."
+    );
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
 
-    // Super Agent SPA — serve its HTML for any /super-agent/* path
-    app.get(["/super-agent", "/super-agent/*"], (req, res) => {
+    if (SA_ONLY) {
+      // SA_ONLY: route / and all SPA paths to super-agent.html BEFORE static files
+      // so dist/index.html (Entrata app) never gets served.
       const saHtml = path.join(distPath, "super-agent.html");
-      if (fs.existsSync(saHtml)) {
-        res.sendFile(saHtml);
-      } else {
-        res.status(404).send("Super Agent not built. Run: npm run build");
-      }
-    });
+      const serveSA = (req: Request, res: Response) => {
+        if (fs.existsSync(saHtml)) {
+          res.sendFile(saHtml);
+        } else {
+          res.status(503).send("Super Agent not built. Run: npm run build");
+        }
+      };
+      app.get("/", serveSA);
+      app.use(express.static(distPath));
+      app.get("*", serveSA); // catch-all for SPA navigation
+    } else {
+      app.use(express.static(distPath));
 
-    // Main app catch-all
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+      // Super Agent SPA — serve its HTML for any /super-agent/* path
+      app.get(["/super-agent", "/super-agent/*"], (req, res) => {
+        const saHtml = path.join(distPath, "super-agent.html");
+        if (fs.existsSync(saHtml)) {
+          res.sendFile(saHtml);
+        } else {
+          res.status(404).send("Super Agent not built. Run: npm run build");
+        }
+      });
+
+      // Main Entrata app catch-all
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+
     console.log("Serving compiled static files from /dist.");
   }
 
+  const mode = SA_ONLY ? "Super Agent (SA_ONLY)" : "TheOptimizer + Super Agent";
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`TheOptimizer + Super Agent server running at http://0.0.0.0:${PORT}`);
-    console.log(`  Main app:    http://0.0.0.0:${PORT}/`);
-    console.log(`  Super Agent: http://0.0.0.0:${PORT}/super-agent.html`);
+    console.log(`${mode} server running at http://0.0.0.0:${PORT}`);
+    if (SA_ONLY) {
+      console.log(`  Super Agent: http://0.0.0.0:${PORT}/`);
+    } else {
+      console.log(`  Main app:    http://0.0.0.0:${PORT}/`);
+      console.log(`  Super Agent: http://0.0.0.0:${PORT}/super-agent.html`);
+    }
   });
 }
 
