@@ -11,11 +11,13 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { ConversationSidebar } from "./components/ConversationSidebar";
 import { PortalPanel } from "./components/PortalPanel";
 
+// Google retired the gemini-2.0 models (404 from the API) — keep this list to
+// currently active catalog models only.
 const MODEL_OPTIONS = [
-  { value: "gemini-2.0-flash",      label: "Gemini 2.0 Flash",    badge: "Fast",     requires: "gemini" },
+  { value: "gemini-3.6-flash",      label: "Gemini 3.6 Flash",    badge: "Fast",     requires: "gemini" },
   { value: "gemini-2.5-flash",      label: "Gemini 2.5 Flash",    badge: "Balanced", requires: "gemini" },
   { value: "gemini-2.5-pro",        label: "Gemini 2.5 Pro",      badge: "Smart",    requires: "gemini" },
-  { value: "gemini-2.0-flash-lite", label: "Gemini Flash Lite",   badge: "Cheapest", requires: "gemini" },
+  { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite", badge: "Cheapest", requires: "gemini" },
   { value: "apple/foundation",      label: "Apple AI",             badge: "On-Device",requires: "apple"  },
   { value: "ollama/llama3",         label: "Llama 3",              badge: "Local",    requires: "ollama" },
   { value: "ollama/mistral",        label: "Mistral",              badge: "Local",    requires: "ollama" },
@@ -133,7 +135,7 @@ export default function SuperAgentApp() {
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<SAConversationSummary[]>([]);
-  const [selectedModel, setSelectedModel] = useState("gemini-2.0-flash");
+  const [selectedModel, setSelectedModel] = useState("gemini-3.6-flash");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [portalOpen, setPortalOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);

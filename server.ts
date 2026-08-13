@@ -191,6 +191,11 @@ function cookieHeader(token: string, req: Request): string {
 
 // ─── AI Clients ───────────────────────────────────────────────────────────────
 
+// gemini-2.0-flash was retired from the model catalog (API returns 404).
+// Default to the current recommended flash model; override via GEMINI_MODEL
+// env var so future retirements don't require a code change.
+const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
+
 let _gemini: GoogleGenAI | null = null;
 function getGemini() {
   if (!_gemini) {
@@ -383,7 +388,7 @@ app.post("/api/sa/conversations/:id/messages", requireAuth, async (req, res) => 
   const system = SYSTEM_PROMPT + context;
 
   let replyText = "";
-  let usedModel = requestedModel || "gemini-2.0-flash";
+  let usedModel = requestedModel || DEFAULT_GEMINI_MODEL;
 
   try {
     if (requestedModel?.startsWith("apple/") || requestedModel === "apple-foundationmodel") {
@@ -402,7 +407,7 @@ app.post("/api/sa/conversations/:id/messages", requireAuth, async (req, res) => 
         parts: [{ text: m.content }],
       }));
       const gemini = getGemini();
-      const modelId = requestedModel || "gemini-2.0-flash";
+      const modelId = requestedModel || DEFAULT_GEMINI_MODEL;
 
       if (attachments.length > 0) {
         // Multimodal: use generateContent with inline data
@@ -513,10 +518,10 @@ app.post("/api/sa/optimize-prompt", requireAuth, async (req, res) => {
   const taskType = detectTaskType(rawPrompt);
 
   const CATALOG: Record<string, { label: string; cost: PromptVariant["estimatedCost"]; strengths: string }> = {
-    "gemini-2.0-flash":       { label: "Gemini 2.0 Flash",           cost: "low",    strengths: "Fast, great for quick tasks and summaries" },
+    "gemini-3.6-flash":       { label: "Gemini 3.6 Flash",           cost: "low",    strengths: "Fast, great for quick tasks and summaries" },
     "gemini-2.5-flash":       { label: "Gemini 2.5 Flash",           cost: "medium", strengths: "Balanced — coding, structured output" },
     "gemini-2.5-pro":         { label: "Gemini 2.5 Pro",             cost: "high",   strengths: "Deep reasoning, complex code, highest accuracy" },
-    "gemini-2.0-flash-lite":  { label: "Gemini Flash Lite",          cost: "free",   strengths: "Ultra-fast, minimal tasks" },
+    "gemini-3.5-flash-lite":  { label: "Gemini 3.5 Flash Lite",      cost: "free",   strengths: "Ultra-fast, minimal tasks" },
     "apple/foundation":       { label: "Apple Intelligence",          cost: "free",   strengths: "100% on-device, private, Neural Engine, no cloud" },
     "ollama/llama3":          { label: "Llama 3 (Local)",            cost: "free",   strengths: "Private, local, general-purpose" },
     "ollama/mistral":         { label: "Mistral (Local)",            cost: "free",   strengths: "Fast local coding + reasoning" },
@@ -527,9 +532,9 @@ app.post("/api/sa/optimize-prompt", requireAuth, async (req, res) => {
     coding:   [{ model: "gemini-2.5-flash", complexity: "balanced", useCase: "Code with good reasoning" }, { model: "gemini-2.5-pro", complexity: "thorough", useCase: "Complex architecture / debugging" }, { model: "ollama/codellama", complexity: "fast", useCase: "Local code generation — free" }],
     creative: [{ model: "gemini-2.5-flash", complexity: "balanced", useCase: "Copy, emails, content" }, { model: "gemini-2.5-pro", complexity: "thorough", useCase: "Long-form, brand narrative" }, { model: "ollama/llama3", complexity: "fast", useCase: "Draft locally, iterate free" }],
     analysis: [{ model: "gemini-2.5-pro", complexity: "thorough", useCase: "Deep analysis, reports" }, { model: "gemini-2.5-flash", complexity: "balanced", useCase: "Summaries at lower cost" }, { model: "apple/foundation", complexity: "fast", useCase: "Private on-device analysis" }],
-    research: [{ model: "gemini-2.5-flash", complexity: "balanced", useCase: "Research summaries" }, { model: "gemini-2.0-flash", complexity: "fast", useCase: "Quick lookups" }, { model: "apple/foundation", complexity: "fast", useCase: "Private research, no data sharing" }],
-    quick:    [{ model: "gemini-2.0-flash", complexity: "fast", useCase: "Fast answer" }, { model: "apple/foundation", complexity: "fast", useCase: "On-device, zero cost" }, { model: "gemini-2.0-flash-lite", complexity: "fast", useCase: "Cheapest cloud option" }],
-    general:  [{ model: "gemini-2.0-flash", complexity: "fast", useCase: "Good balance" }, { model: "ollama/llama3", complexity: "balanced", useCase: "Free local model" }, { model: "apple/foundation", complexity: "fast", useCase: "Private on-device" }],
+    research: [{ model: "gemini-2.5-flash", complexity: "balanced", useCase: "Research summaries" }, { model: "gemini-3.6-flash", complexity: "fast", useCase: "Quick lookups" }, { model: "apple/foundation", complexity: "fast", useCase: "Private research, no data sharing" }],
+    quick:    [{ model: "gemini-3.6-flash", complexity: "fast", useCase: "Fast answer" }, { model: "apple/foundation", complexity: "fast", useCase: "On-device, zero cost" }, { model: "gemini-3.5-flash-lite", complexity: "fast", useCase: "Cheapest cloud option" }],
+    general:  [{ model: "gemini-3.6-flash", complexity: "fast", useCase: "Good balance" }, { model: "ollama/llama3", complexity: "balanced", useCase: "Free local model" }, { model: "apple/foundation", complexity: "fast", useCase: "Private on-device" }],
   };
 
   const routes = ROUTES[taskType] ?? ROUTES.general;
@@ -538,7 +543,7 @@ app.post("/api/sa/optimize-prompt", requireAuth, async (req, res) => {
     try {
       const gemini = getGemini();
       const r = await gemini.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: DEFAULT_GEMINI_MODEL,
         contents: `You are an expert prompt engineer for Designs by Myk LLC's Super Agent.\nRaw request: "${rawPrompt}"\nTask type: ${taskType}\nGenerate ${routes.length} improved variants for: ${routes.map((r, i) => `Variant ${i+1}: ${CATALOG[r.model]?.label} — ${r.useCase}`).join("; ")}\nReturn JSON: {"taskType":"${taskType}","variants":[{"promptText":"...","rationale":"..."}]}`,
         config: {
           responseMimeType: "application/json",
