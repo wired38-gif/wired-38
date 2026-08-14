@@ -6,6 +6,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { config as loadEnv } from "dotenv";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
+import { brainEngineTools, isBrainEngineConfigured } from "./src/tools/brainEngineTools.ts";
 
 loadEnv({ path: [".env.local", ".env"] });
 
@@ -276,6 +277,12 @@ Key URLs:
 - Entrata Training Hub: entrata-training.onrender.com
 - AskMyk.io: askmyk.io
 
+You have live tools wired to the MYK Brain Engine (the Apple Container / Virtualization environment on MYK's Mac):
+- get_brain_engine_status — build status, container health, gateway state, build log tail
+- restart_brain_engine_container — hard reset hung Apple Container / Virtualization processes
+- trigger_brain_engine_build — kick off a fresh Brain Engine build
+When MYK asks how the build is coming, whether the engine is up, or whether something is hung, call get_brain_engine_status first and answer from the live data. Only call restart/build tools when the status shows a hang or MYK asks for it.
+
 When you have CONTEXT from the knowledge base, reference it naturally and build on it.
 Be direct, smart, and strategic. Speak as a trusted advisor who knows MYK's entire portfolio.`;
 
@@ -306,9 +313,16 @@ app.get("/api/sa/status", async (req, res) => {
     pinRequired: !!process.env.SA_PIN,
     ollama,
     appleAI,
+    brainEngine: { configured: isBrainEngineConfigured() },
     kbSize: authed ? loadAllKBEntries().length : 0,
     conversationCount: authed ? loadAllConversations().length : 0,
   });
+});
+
+// Live Brain Engine snapshot (daemon on the Mac via MYK_DAEMON_URL).
+app.get("/api/sa/brain-engine", requireAuth, async (req, res) => {
+  const statusTool = brainEngineTools.find(t => t.name === "get_brain_engine_status")!;
+  res.json({ configured: isBrainEngineConfigured(), ...(await statusTool.execute() as object) });
 });
 
 // ─── Conversations ────────────────────────────────────────────────────────────
@@ -427,9 +441,29 @@ app.post("/api/sa/conversations/:id/messages", requireAuth, async (req, res) => 
         });
         replyText = r.text ?? "";
       } else {
-        // Text-only: use chat session
-        const chat = gemini.chats.create({ model: modelId, config: { systemInstruction: system }, history });
-        const r = await chat.sendMessage({ message: text });
+        // Text-only: chat session with Brain Engine tool calling
+        const chat = gemini.chats.create({
+          model: modelId,
+          config: {
+            systemInstruction: system,
+            tools: [{
+              functionDeclarations: brainEngineTools.map(t => ({ name: t.name, description: t.description })),
+            }],
+          },
+          history,
+        });
+        let r = await chat.sendMessage({ message: text });
+
+        // Execute any daemon tool calls the model requests (bounded rounds).
+        for (let round = 0; round < 4 && r.functionCalls?.length; round++) {
+          const responseParts = [];
+          for (const call of r.functionCalls) {
+            const tool = brainEngineTools.find(t => t.name === call.name);
+            const result = tool ? await tool.execute() : { error: `Unknown tool: ${call.name}` };
+            responseParts.push({ functionResponse: { name: call.name ?? "", response: { result } } });
+          }
+          r = await chat.sendMessage({ message: responseParts });
+        }
         replyText = r.text ?? "";
       }
       usedModel = modelId;
