@@ -673,6 +673,76 @@ app.post("/api/entrata-chat", async (req, res) => {
   }
 });
 
+// ─── Myk's Brain Chat Endpoint ───────────────────────────────────────────────
+
+const MYK_BRAIN_SYSTEM_PROMPT = `You are "Myk's Brain" — the intelligent AI assistant built into MYK.IO, a hyper-efficient AI decision and prompt-optimization platform.
+
+Your personality: concise, sharp, and helpful. You think like a senior engineer and speak plainly.
+
+You can help with:
+- Explaining MYK.IO features: cost-tier analysis, the TheOptimizer prompt engine, and prompt refinement
+- General AI/LLM questions: model selection, prompt engineering, token optimization
+- App status: if asked about server status, API connectivity, or build status, summarize what you know about the current runtime environment
+- Software development questions: architecture, debugging, best practices
+- Answering anything the user asks in a direct, actionable way
+
+MYK.IO cost tiers:
+- Tier 1 (Low Cost): Compact, high-impact revision prompt — minimal tokens, maximum result
+- Tier 2 (Balanced): Master Blueprint — structured plan with milestones and clear steps
+- Tier 3 (High Cost): Deep-Dive Specification — exhaustive engineering spec with schemas, edge cases, and full copy
+
+RESPONSE RULES:
+1. Be concise and direct — get to the answer fast
+2. Use bullet points for multi-step answers
+3. Use **bold** for important terms
+4. Keep answers under 200 words unless depth is explicitly requested
+5. Never say "I cannot" for reasonable questions — find a way to help`;
+
+app.post("/api/myk-chat", async (req, res) => {
+  try {
+    const { message, history = [] } = req.body as {
+      message: string;
+      history: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>;
+    };
+
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Message is required." });
+    }
+
+    if (process.env.GEMINI_API_KEY) {
+      const ai = getAiClient();
+      const chat = ai.chats.create({
+        model: "gemini-2.0-flash",
+        config: { systemInstruction: MYK_BRAIN_SYSTEM_PROMPT },
+        history,
+      });
+      const response = await chat.sendMessage({ message });
+      return res.json({ reply: response.text ?? "I couldn't generate a response. Please try again." });
+    }
+
+    // Fallback: keyword-based responses when Gemini isn't configured
+    const q = message.toLowerCase();
+    let reply = "";
+
+    if (q.includes("status") || q.includes("build") || q.includes("online") || q.includes("health")) {
+      reply = "**App Status:** The MYK.IO server is running and responding to requests. The Gemini API key is not configured in this environment, so AI features are running in fallback mode.\n\nTo enable full AI capabilities, set the `GEMINI_API_KEY` environment variable.";
+    } else if (q.includes("tier") || q.includes("cost") || q.includes("option")) {
+      reply = "**MYK.IO Cost Tiers:**\n\n- **Tier 1 (Low Cost):** Compact revision prompt — fast, minimal tokens\n- **Tier 2 (Balanced):** Master Blueprint — structured milestones and architecture\n- **Tier 3 (Deep Dive):** Full engineering spec — schemas, edge cases, complete copy\n\nChoose based on how much detail you need vs. token budget.";
+    } else if (q.includes("prompt") || q.includes("optimize") || q.includes("refine")) {
+      reply = "**Prompt Optimization:** Use the TheOptimizer on the main dashboard — paste your prompt, select a cost tier, and get a structured execution plan.\n\nTips:\n- Be specific about your goal\n- Include constraints (tech stack, audience, deadline)\n- Avoid vague language like \"make it better\"";
+    } else if (q.includes("model") || q.includes("llm") || q.includes("claude") || q.includes("gpt") || q.includes("gemini")) {
+      reply = "**Model Selection Guide:**\n\n- **Claude 3.5 Sonnet** — best for complex reasoning and long documents\n- **GPT-4o** — best for coding and structured output\n- **Gemini 2.0 Flash** — best for speed and cost efficiency\n- **Llama 3** — best for self-hosted / privacy-sensitive tasks";
+    } else {
+      reply = "I'm Myk's Brain — your AI assistant for MYK.IO. I can help with:\n\n- **App status** — server health, API connectivity\n- **Cost tiers** — choosing between Tier 1, 2, and 3\n- **Prompt optimization** — tips and techniques\n- **Model selection** — which LLM to use and when\n- **General AI questions** — anything you're curious about\n\nWhat would you like to know?";
+    }
+
+    return res.json({ reply });
+  } catch (err: any) {
+    console.error("Myk Brain chat error:", err);
+    res.status(500).json({ error: err.message || "Chat service error." });
+  }
+});
+
 // ─── Queen (Queenscustoms.shop) Chat & Ticket Endpoints ──────────────────────
 
 const QUEEN_SYSTEM_PROMPT = `You are "Queen" — the warm, stylish, and knowledgeable AI assistant for Queenscustoms.shop, a premium custom goods boutique founded by creative entrepreneur and designer Mykiesha (known lovingly as "Queen" by her community). You speak with confidence, warmth, and a touch of royal flair. Use 👑 sparingly to accent key moments.
