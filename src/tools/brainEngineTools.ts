@@ -2,9 +2,9 @@
 // Super Agent → MYK Brain Engine bridge tools.
 //
 // Talks to myk-daemon (myks-app repo, myk-daemon/server.js) running on the Mac
-// host, exposed through the myks-brain Cloudflare tunnel at
-// https://daemon.askmyk.io. Uses native fetch instead of axios so no new
-// runtime dependency is needed.
+// host, exposed through the dedicated myk-daemon Cloudflare tunnel at
+// https://daemon.askmyk.io (isolated from the shared myks-brain tunnel).
+// Uses native fetch instead of axios so no new runtime dependency is needed.
 //
 // Env (set in the Render deployment):
 //   MYK_DAEMON_URL   e.g. https://daemon.askmyk.io
@@ -17,13 +17,33 @@ const DAEMON_URL = (process.env.MYK_DAEMON_URL || "http://localhost:9090").repla
 const DAEMON_SECRET = process.env.DAEMON_SECRET || "myk-super-agent-secret-key";
 
 export function isBrainEngineConfigured(): boolean {
-  return Boolean(process.env.MYK_DAEMON_URL);
+  return Boolean(process.env.MYK_DAEMON_URL && process.env.DAEMON_SECRET);
 }
 
-// Retries cover transient tunnel routing flaps (e.g. a stale Cloudflare tunnel
-// connector without the daemon ingress rule serving a 404 for a request or two).
-// With two registered connectors the stale one wins ~half the routes, so five
-// attempts keep the effective failure rate low until it is decommissioned.
+// Without MYK_DAEMON_URL the fetch falls back to localhost:9090 *inside this
+// Render container* and fails with a misleading "fetch failed". Surface the
+// real cause and the real fix instead, so the model never tells MYK to
+// restart anything on the Mac (the Mac-side bridge is independent of this).
+function notConfiguredResult() {
+  const missing = [
+    !process.env.MYK_DAEMON_URL && "MYK_DAEMON_URL",
+    !process.env.DAEMON_SECRET && "DAEMON_SECRET",
+  ].filter(Boolean).join(" and ");
+  return {
+    notConfigured: true,
+    error: `This Render service is missing the ${missing} environment variable(s), so the Mac bridge cannot be reached from here.`,
+    fix:
+      "This is a server-side configuration gap, NOT a problem on MYK's Mac — do not suggest starting or " +
+      "restarting anything locally. Fix: in the Render dashboard open the myk-super-agent service → " +
+      "Environment, add MYK_DAEMON_URL=https://daemon.askmyk.io and DAEMON_SECRET (the value of " +
+      "DAEMON_SECRET in ~/MYK-BRAIN-Workspace/.env.local on the Mac), save, and let Render redeploy.",
+  };
+}
+
+// Retries are defense-in-depth against transient tunnel routing flaps. The
+// historical root cause (a stale connector on the shared myks-brain tunnel
+// winning routes) was eliminated on 2026-08-13 by moving daemon.askmyk.io to
+// a dedicated tunnel that only MYK's Mac runs.
 const RETRYABLE_STATUS = new Set([404, 502, 503, 530]);
 const MAX_ATTEMPTS = 5;
 
@@ -81,6 +101,7 @@ export const brainEngineTools: BrainEngineTool[] = [
       "Use whenever MYK asks how the build is coming, whether the engine is up, or whether a build is hung.",
     parameters: NO_PARAMS,
     execute: async () => {
+      if (!isBrainEngineConfigured()) return notConfiguredResult();
       try {
         const [status, logs] = await Promise.all([
           daemonFetch("/status"),
@@ -88,7 +109,7 @@ export const brainEngineTools: BrainEngineTool[] = [
         ]);
         return { status, logs: logs.logs };
       } catch (err: any) {
-        return { error: `Failed to connect to local Apple Container Daemon: ${err.message}` };
+        return { error: `Failed to connect to the Mac bridge daemon: ${err.message}` };
       }
     },
   },
@@ -99,6 +120,7 @@ export const brainEngineTools: BrainEngineTool[] = [
       "(e.g. a container build stuck at step 23). Restarts the Apple container system service.",
     parameters: NO_PARAMS,
     execute: async () => {
+      if (!isBrainEngineConfigured()) return notConfiguredResult();
       try {
         // container system stop + start can take ~50s — allow a longer window.
         return await daemonFetch("/restart", { method: "POST" }, 70000);
@@ -114,6 +136,7 @@ export const brainEngineTools: BrainEngineTool[] = [
       "Runs the configured build command, or the gateway autopilot self-build when none is configured.",
     parameters: NO_PARAMS,
     execute: async () => {
+      if (!isBrainEngineConfigured()) return notConfiguredResult();
       try {
         return await daemonFetch("/build", { method: "POST" }, 30000);
       } catch (err: any) {
@@ -140,6 +163,7 @@ export const brainEngineTools: BrainEngineTool[] = [
       required: ["command"],
     },
     execute: async (args) => {
+      if (!isBrainEngineConfigured()) return notConfiguredResult();
       const command = typeof args?.command === "string" ? args.command.trim() : "";
       if (!command) return { error: "command (string) is required" };
       try {
