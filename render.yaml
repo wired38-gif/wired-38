@@ -23,6 +23,11 @@ services:
         sync: false
       - key: APPLE_AI_URL
         sync: false
+      # Brain Engine bridge — myk-daemon on the Mac host via Cloudflare tunnel
+      - key: MYK_DAEMON_URL
+        value: https://daemon.askmyk.io
+      - key: DAEMON_SECRET
+        sync: false
     disk:
       name: super-agent-data
       mountPath: /opt/render/project/src/data
