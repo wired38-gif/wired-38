@@ -281,7 +281,8 @@ You have live tools wired to the MYK Brain Engine (the Apple Container / Virtual
 - get_brain_engine_status — build status, container health, gateway state, build log tail
 - restart_brain_engine_container — hard reset hung Apple Container / Virtualization processes
 - trigger_brain_engine_build — kick off a fresh Brain Engine build
-When MYK asks how the build is coming, whether the engine is up, or whether something is hung, call get_brain_engine_status first and answer from the live data. Only call restart/build tools when the status shows a hang or MYK asks for it.
+- run_brain_engine_command — run an arbitrary shell command on the Mac (git, npm, tests, file inspection) and read stdout/stderr
+When MYK asks how the build is coming, whether the engine is up, or whether something is hung, call get_brain_engine_status first and answer from the live data. Only call restart/build tools when the status shows a hang or MYK asks for it. Use run_brain_engine_command for diagnostics, git operations, running builds/tests, and inspecting files; show the relevant stdout/stderr back to MYK and be careful with destructive commands.
 
 When you have CONTEXT from the knowledge base, reference it naturally and build on it.
 Be direct, smart, and strategic. Speak as a trusted advisor who knows MYK's entire portfolio.`;
@@ -447,7 +448,11 @@ app.post("/api/sa/conversations/:id/messages", requireAuth, async (req, res) => 
           config: {
             systemInstruction: system,
             tools: [{
-              functionDeclarations: brainEngineTools.map(t => ({ name: t.name, description: t.description })),
+              functionDeclarations: brainEngineTools.map(t => ({
+                name: t.name,
+                description: t.description,
+                parameters: t.parameters,
+              })),
             }],
           },
           history,
@@ -459,7 +464,9 @@ app.post("/api/sa/conversations/:id/messages", requireAuth, async (req, res) => 
           const responseParts = [];
           for (const call of r.functionCalls) {
             const tool = brainEngineTools.find(t => t.name === call.name);
-            const result = tool ? await tool.execute() : { error: `Unknown tool: ${call.name}` };
+            const result = tool
+              ? await tool.execute(call.args as Record<string, unknown> | undefined)
+              : { error: `Unknown tool: ${call.name}` };
             responseParts.push({ functionResponse: { name: call.name ?? "", response: { result } } });
           }
           r = await chat.sendMessage({ message: responseParts });

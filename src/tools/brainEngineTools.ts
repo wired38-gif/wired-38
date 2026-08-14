@@ -11,6 +11,8 @@
 //   DAEMON_SECRET    must match DAEMON_SECRET in the Mac's
 //                    ~/MYK-BRAIN-Workspace/.env.local
 
+import { Type } from "@google/genai";
+
 const DAEMON_URL = (process.env.MYK_DAEMON_URL || "http://localhost:9090").replace(/\/+$/, "");
 const DAEMON_SECRET = process.env.DAEMON_SECRET || "myk-super-agent-secret-key";
 
@@ -54,12 +56,21 @@ async function daemonFetch(pathname: string, init: RequestInit = {}, timeoutMs =
   throw lastError;
 }
 
+// Schema type usable directly as a Gemini functionDeclaration `parameters`.
+interface ToolSchema {
+  type: Type;
+  properties: Record<string, { type: Type; description?: string }>;
+  required?: string[];
+}
+
 export interface BrainEngineTool {
   name: string;
   description: string;
-  parameters: { type: "object"; properties: Record<string, never> };
-  execute: () => Promise<unknown>;
+  parameters: ToolSchema;
+  execute: (args?: Record<string, unknown>) => Promise<unknown>;
 }
+
+const NO_PARAMS: ToolSchema = { type: Type.OBJECT, properties: {} };
 
 export const brainEngineTools: BrainEngineTool[] = [
   {
@@ -68,7 +79,7 @@ export const brainEngineTools: BrainEngineTool[] = [
       "Check the live MYK Brain Engine on the Mac host: Apple Container / Virtualization process health, " +
       "gateway status, autopilot build progress, and the tail of the build log. " +
       "Use whenever MYK asks how the build is coming, whether the engine is up, or whether a build is hung.",
-    parameters: { type: "object", properties: {} },
+    parameters: NO_PARAMS,
     execute: async () => {
       try {
         const [status, logs] = await Promise.all([
@@ -86,7 +97,7 @@ export const brainEngineTools: BrainEngineTool[] = [
     description:
       "Hard reset hung Apple Virtualization / Apple Container processes on the Mac host " +
       "(e.g. a container build stuck at step 23). Restarts the Apple container system service.",
-    parameters: { type: "object", properties: {} },
+    parameters: NO_PARAMS,
     execute: async () => {
       try {
         // container system stop + start can take ~50s — allow a longer window.
@@ -101,12 +112,45 @@ export const brainEngineTools: BrainEngineTool[] = [
     description:
       "Trigger a fresh Brain Engine build on the Mac host (Apple Silicon ARM64). " +
       "Runs the configured build command, or the gateway autopilot self-build when none is configured.",
-    parameters: { type: "object", properties: {} },
+    parameters: NO_PARAMS,
     execute: async () => {
       try {
         return await daemonFetch("/build", { method: "POST" }, 30000);
       } catch (err: any) {
         return { error: `Failed to trigger build: ${err.message}` };
+      }
+    },
+  },
+  {
+    name: "run_brain_engine_command",
+    description:
+      "Run an arbitrary shell command on the Mac host from the Brain Engine repo root " +
+      "(e.g. 'git status', 'npm run test:smoke', 'git pull', 'tail -n 40 logs/gateway.log') and return " +
+      "stdout/stderr. Use for diagnostics, git operations, running builds/tests, and inspecting files. " +
+      "Requires the daemon to have exec enabled (DAEMON_ALLOW_EXEC=1); if disabled it returns an error. " +
+      "Prefer the dedicated status/restart/build tools when they fit; use this for anything else.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        command: {
+          type: Type.STRING,
+          description: "The shell command to execute on the Mac host, e.g. \"git status\" or \"npm run build\".",
+        },
+      },
+      required: ["command"],
+    },
+    execute: async (args) => {
+      const command = typeof args?.command === "string" ? args.command.trim() : "";
+      if (!command) return { error: "command (string) is required" };
+      try {
+        // Builds/tests can run long — allow a 5-minute window.
+        return await daemonFetch(
+          "/exec",
+          { method: "POST", body: JSON.stringify({ command, timeoutMs: 240000 }) },
+          300000,
+        );
+      } catch (err: any) {
+        return { error: `Failed to run command: ${err.message}` };
       }
     },
   },
