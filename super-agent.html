@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>MYK Super Agent — Designs by Myk LLC</title>
+    <meta name="description" content="Unified AI agent for all MYK projects, brands, and side hustles." />
+
+    <!-- PWA / Home Screen -->
+    <link rel="manifest" href="/super-agent-manifest.json" />
+    <meta name="theme-color" content="#0f172a" />
+
+    <!-- iOS / iPadOS home screen -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MYK Agent" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.svg" />
+
+    <!-- macOS Safari -->
+    <meta name="application-name" content="MYK Super Agent" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="MYK Super Agent" />
+    <meta property="og:description" content="Unified AI agent for all MYK projects — RAG memory, multi-model routing, Apple Intelligence." />
+    <meta property="og:type" content="website" />
+
+    <!-- iOS safe-area support -->
+    <style>
+      body {
+        margin: 0;
+        /* Push content below the Dynamic Island / notch */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+        background: #0f172a;
+        /* Prevent iOS scroll bounce showing white background */
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      /* Smooth momentum scrolling on iOS */
+      * {
+        -webkit-overflow-scrolling: touch;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="sa-root"></div>
+    <script type="module" src="/src/super-agent/main.tsx"></script>
+  </body>
+</html>

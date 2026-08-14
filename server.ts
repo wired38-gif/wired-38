@@ -10,6 +10,12 @@ import fs from "fs";
 
 loadEnv({ path: [".env.local", ".env"] });
 
+// ─── Mode flag ────────────────────────────────────────────────────────────────
+// SA_ONLY_MODE=true → serve only the Super Agent (SA.Mykbrands.com deployment).
+// All Entrata training routes, analyze-prompt, refine-prompt, and trainee auth
+// are disabled. Only /api/sa/* is exposed.
+const SA_ONLY = process.env.SA_ONLY_MODE === "true";
+
 // ─── Self-Registration Training Auth System ───────────────────────────────────
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -200,6 +206,9 @@ function getAiClient() {
   }
   return aiClient;
 }
+
+// ─── Entrata Training Routes (disabled in SA_ONLY_MODE) ──────────────────────
+if (!SA_ONLY) {
 
 // 1. API Endpoint: Check backend status and key configuration
 app.get("/api/status", (req, res) => {
@@ -392,7 +401,7 @@ Original Prompt:
 
 Your output must contain:
 1. "title": "Cost-Friendly Prompt Revision"
-2. "content": Write the prompt itself inside a block, clearly formatted in structured markdown. Add a brief description of how it reduces token overhead. Include a deployment tip linking files to the production gateway "https://myk-online.com/".
+2. "content": Write the prompt itself inside a block, clearly formatted in structured markdown. Add a brief description of how it reduces token overhead. Include a deployment tip linking files to the MYK production gateway at entrata-training.onrender.com.
 3. "milestones": Minimum of 4 task steps to build the simplified project.
 4. "keyRecommendations": Tips for keeping build steps brief.`;
     } else if (Number(tier) === 2) {
@@ -405,12 +414,12 @@ Original Prompt:
 Your output must contain:
 1. "title": "The Master Blueprint"
 2. "content": A fully articulated Markdown roadmap containing:
-   - Architecture & Design Overview (and how to serve it securely at "https://myk-online.com/")
+   - Architecture & Design Overview (and how to serve it securely at entrata-training.onrender.com)
    - Optimal File Structure
    - Direct step-by-step code requirements or guidelines
    - Strategy to build this within a modest token footprint
 3. "milestones": A rich sequence of 6 to 8 detailed milestone titles for their construction checklist.
-4. "keyRecommendations": Technical optimization advice referencing deployment steps to link system memory via the "https://myk-online.com/" platform.`;
+4. "keyRecommendations": Technical optimization advice referencing deployment steps to link system memory via the MYK platform at entrata-training.onrender.com.`;
     } else {
       executionPrompt = `You are "TheOptimizer". The user has selected Option 3 (High Cost / Deep Dive): "TheDeepDiveDeepDive".
 Your objective is to provide maximum extreme detail. It must be exhaustive. Include step-by-step implementation sequences, full mock schema designs, thorough defensive error handling strategies, and precise copy ideas.${llmAdapterStyle}
@@ -421,19 +430,19 @@ Original Prompt:
 Your output must contain:
 1. "title": "The Deep Dive Specification"
 2. "content": An incredibly rich, comprehensive Markdown master draft including:
-   - Detailed System Architecture & Flowchart representations in markdown (designed for hosting or triggering at "https://myk-online.com/")
+   - Detailed System Architecture & Flowchart representations in markdown (designed for hosting or triggering at entrata-training.onrender.com)
    - Complete DB Schemas (tables, relationships, types)
    - Exhaustive Error Handling guide (edge cases, fallback handlers, UI overlays)
    - UX/UI Mock design copy & complete copy guides
 3. "milestones": 8 highly descriptive development milestones for the checklist.
-4. "keyRecommendations": High-performance optimizations and exact resource cost guards for cloud hosting. Include tips on deploying static assets to the MYK core gateway "https://myk-online.com/".`;
+4. "keyRecommendations": High-performance optimizations and exact resource cost guards for cloud hosting. Include tips on deploying static assets to the MYK platform at entrata-training.onrender.com.`;
     }
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: executionPrompt,
       config: {
-        systemInstruction: `You are "TheOptimizer" (powered by MYK.IO), a hyper-focused AI resource-planning architect. You return beautifully crafted, structured Markdown in your content as well as clear checklist items. Always format responses in high-fidelity JSON following the response schema. Integrate mention of deploying optimized models to https://myk-online.com/ naturally.`,
+        systemInstruction: `You are "TheOptimizer" (powered by MYK.IO), a hyper-focused AI resource-planning architect. You return beautifully crafted, structured Markdown in your content as well as clear checklist items. Always format responses in high-fidelity JSON following the response schema. Integrate mention of deploying optimized models to the MYK platform naturally.`,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -1013,26 +1022,875 @@ app.get("/api/admin/queen-tickets", requireAuth, (req, res) => {
   return res.json({ total: list.length, tickets: list });
 });
 
+} // end if (!SA_ONLY) — Entrata + Queen training routes
+
+// ─── Super Agent System ──────────────────────────────────────────────────────
+
+const SA_DIR = path.join(DATA_DIR, "super-agent");
+const SA_KB_DIR = path.join(SA_DIR, "kb");
+const SA_CONV_DIR = path.join(SA_DIR, "conversations");
+
+function ensureSADirs() {
+  [SA_DIR, SA_KB_DIR, SA_CONV_DIR].forEach(d => {
+    if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+  });
+}
+
+interface KBEntry {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  source: "manual" | "cursor-chat" | "import" | "auto";
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SAMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  model?: string;
+  promptVariants?: PromptVariant[];
+}
+
+interface SAConversation {
+  id: string;
+  title: string;
+  messages: SAMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PromptVariant {
+  promptText: string;
+  model: string;
+  modelLabel: string;
+  rationale: string;
+  useCase: string;
+  estimatedCost: "free" | "low" | "medium" | "high";
+  complexity: "fast" | "balanced" | "thorough";
+}
+
+// Simple BM25-style keyword search
+function searchKB(query: string, entries: KBEntry[], limit = 5): Array<KBEntry & { score: number }> {
+  const stopWords = new Set(["the","a","an","is","in","it","to","of","and","or","for","with","that","this","was","are"]);
+  const queryWords = query.toLowerCase()
+    .split(/\W+/)
+    .filter(w => w.length > 2 && !stopWords.has(w));
+
+  if (queryWords.length === 0) {
+    return entries.slice(0, limit).map(e => ({ ...e, score: 1 }));
+  }
+
+  const scored = entries.map(entry => {
+    const titleLower = entry.title.toLowerCase();
+    const contentLower = entry.content.toLowerCase();
+    const tagsLower = entry.tags.join(" ").toLowerCase();
+    let score = 0;
+
+    for (const word of queryWords) {
+      const re = new RegExp(word, "g");
+      score += (titleLower.match(re) ?? []).length * 4;
+      score += (contentLower.match(re) ?? []).length;
+      score += (tagsLower.match(re) ?? []).length * 2;
+    }
+
+    return { ...entry, score };
+  });
+
+  return scored
+    .filter(e => e.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+function loadAllKBEntries(): KBEntry[] {
+  ensureSADirs();
+  try {
+    return fs.readdirSync(SA_KB_DIR)
+      .filter(f => f.endsWith(".json"))
+      .map(f => JSON.parse(fs.readFileSync(path.join(SA_KB_DIR, f), "utf-8")) as KBEntry)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  } catch {
+    return [];
+  }
+}
+
+function saveKBEntry(entry: KBEntry) {
+  ensureSADirs();
+  fs.writeFileSync(path.join(SA_KB_DIR, `${entry.id}.json`), JSON.stringify(entry, null, 2));
+}
+
+function deleteKBEntry(id: string) {
+  const filePath = path.join(SA_KB_DIR, `${id}.json`);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+}
+
+function loadAllConversations(): SAConversation[] {
+  ensureSADirs();
+  try {
+    return fs.readdirSync(SA_CONV_DIR)
+      .filter(f => f.endsWith(".json"))
+      .map(f => JSON.parse(fs.readFileSync(path.join(SA_CONV_DIR, f), "utf-8")) as SAConversation)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  } catch {
+    return [];
+  }
+}
+
+function loadConversation(id: string): SAConversation | null {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(SA_CONV_DIR, `${id}.json`), "utf-8")) as SAConversation;
+  } catch {
+    return null;
+  }
+}
+
+function saveConversation(conv: SAConversation) {
+  ensureSADirs();
+  fs.writeFileSync(path.join(SA_CONV_DIR, `${conv.id}.json`), JSON.stringify(conv, null, 2));
+}
+
+function deleteConversation(id: string) {
+  const filePath = path.join(SA_CONV_DIR, `${id}.json`);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+}
+
+// Detect task type from query for smart model routing
+function detectTaskType(text: string): "coding" | "creative" | "analysis" | "research" | "quick" | "local-ok" {
+  const lower = text.toLowerCase();
+  if (/\b(code|function|class|bug|error|typescript|javascript|python|sql|api|debug|refactor|implement)\b/.test(lower)) return "coding";
+  if (/\b(write|story|poem|draft|email|copy|marketing|creative|imagine|design)\b/.test(lower)) return "creative";
+  if (/\b(analyze|compare|evaluate|breakdown|summarize|report|data|metrics|insights|why)\b/.test(lower)) return "analysis";
+  if (/\b(research|find|search|what is|how does|explain|definition|history|learn)\b/.test(lower)) return "research";
+  if (text.split(/\s+/).length < 15) return "quick";
+  return "local-ok";
+}
+
+// Check if Ollama is available locally
+async function checkOllama(): Promise<{ available: boolean; models: string[] }> {
+  const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
+  try {
+    const resp = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
+    if (!resp.ok) return { available: false, models: [] };
+    const data = await resp.json() as { models?: Array<{ name: string }> };
+    const models = (data.models ?? []).map((m: { name: string }) => m.name);
+    return { available: true, models };
+  } catch {
+    return { available: false, models: [] };
+  }
+}
+
+// Check if Apple AI (apfel / Foundation Models) is available
+// apfel exposes an OpenAI-compatible API at APPLE_AI_URL (default localhost:11435/v1)
+async function checkAppleAI(): Promise<{ available: boolean; modelId: string; contextWindow?: number }> {
+  const appleUrl = process.env.APPLE_AI_URL || "http://localhost:11435/v1";
+  try {
+    // apfel exposes GET /health with model availability info
+    const healthUrl = appleUrl.replace(/\/v1$/, "") + "/health";
+    const resp = await fetch(healthUrl, { signal: AbortSignal.timeout(2000) });
+    if (!resp.ok) return { available: false, modelId: "apple-foundationmodel" };
+    const data = await resp.json() as {
+      modelAvailable?: boolean;
+      contextWindow?: number;
+      model?: string;
+    };
+    const available = data.modelAvailable !== false;
+    return {
+      available,
+      modelId: data.model || "apple-foundationmodel",
+      contextWindow: data.contextWindow,
+    };
+  } catch {
+    return { available: false, modelId: "apple-foundationmodel" };
+  }
+}
+
+// Chat with Apple Foundation Model via apfel's OpenAI-compatible API
+async function chatWithAppleAI(
+  systemPrompt: string,
+  messages: Array<{ role: string; content: string }>,
+): Promise<string> {
+  const appleUrl = process.env.APPLE_AI_URL || "http://localhost:11435/v1";
+  const payload = {
+    model: "apple-foundationmodel",
+    messages: [
+      { role: "system", content: systemPrompt },
+      ...messages,
+    ],
+    stream: false,
+    // Apple Foundation Model has a 4096-token context window — keep it short
+    max_tokens: 1024,
+  };
+  const resp = await fetch(`${appleUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Apple AI error ${resp.status}: ${errText.slice(0, 200)}`);
+  }
+  const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
+// Send a message to Ollama
+async function chatWithOllama(model: string, systemPrompt: string, messages: Array<{role: string; content: string}>): Promise<string> {
+  const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
+  const payload = {
+    model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      ...messages,
+    ],
+    stream: false,
+  };
+  const resp = await fetch(`${ollamaUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!resp.ok) throw new Error(`Ollama error: ${resp.status}`);
+  const data = await resp.json() as { message?: { content: string } };
+  return data.message?.content ?? "";
+}
+
+const SA_SYSTEM_PROMPT = `You are MYK's Super Agent — a unified, memory-enabled AI assistant for Designs by Myk LLC, accessible at SA.Mykbrands.com.
+
+You help MYK with:
+- All MYK brands and side projects (MYK.IO, TheOptimizer, AskMyk.io, MYKBrands, Queenscustoms.shop, etc.)
+- Cursor AI development, prompt crafting, and AI model strategy
+- Property management tech (ClearWorth, Entrata expertise)
+- Business strategy, branding, and operations
+- Technical development (TypeScript, React, Express, AI integrations)
+- Cross-project context — you remember conversations and link related ideas
+
+Key URLs:
+- Super Agent (you): SA.Mykbrands.com
+- Entrata Training Hub: entrata-training.onrender.com
+- AskMyk.io: askmyk.io
+
+When you have CONTEXT from the knowledge base, reference it naturally and build on it.
+Be direct, smart, and strategic. Speak as a trusted advisor who knows MYK's entire portfolio.`;
+
+// ── SA Session Auth ───────────────────────────────────────────────────────────
+
+const SA_SESSION_COOKIE = "myk_sa_session";
+const SA_SESSION_TTL = 30 * 24 * 60 * 60; // 30 days
+
+function getSAPin(): string | undefined {
+  return process.env.SA_PIN;
+}
+
+function isSAPinConfigured(): boolean {
+  return !!getSAPin();
+}
+
+function createSASessionToken(): string {
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + SA_SESSION_TTL * 1000 })).toString("base64url");
+  const sig = crypto.createHmac("sha256", getAuthSecret() || "sa-default-secret").update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+function verifySASessionToken(token: string | undefined): boolean {
+  if (!token) return false;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return false;
+  const expectedSig = crypto.createHmac("sha256", getAuthSecret() || "sa-default-secret").update(payload).digest("base64url");
+  if (!constantTimeEqual(sig, expectedSig)) return false;
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8")) as { exp: number };
+    return data.exp > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function isSAAuthenticated(req: Request): boolean {
+  // If no PIN is configured, SA is open to anyone on the server
+  if (!isSAPinConfigured()) return true;
+  const cookies = parseCookies(req.headers.cookie);
+  return verifySASessionToken(cookies[SA_SESSION_COOKIE]);
+}
+
+function buildSACookie(token: string, req: Request): string {
+  const secure = req.secure || process.env.NODE_ENV === "production";
+  const parts = [
+    `${SA_SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${SA_SESSION_TTL}`,
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+function requireSAAuth(req: Request, res: Response, next: NextFunction) {
+  if (!isSAAuthenticated(req)) {
+    res.status(401).json({ error: "PIN required", pinRequired: true });
+    return;
+  }
+  next();
+}
+
+// SA PIN login
+app.post("/api/sa/login", (req, res) => {
+  const { pin } = req.body as { pin: string };
+  const configured = getSAPin();
+
+  if (!configured) {
+    // No PIN set — open access
+    res.json({ authenticated: true, open: true });
+    return;
+  }
+
+  if (!pin || !constantTimeEqual(String(pin).trim(), configured)) {
+    res.status(401).json({ error: "Incorrect PIN." });
+    return;
+  }
+
+  const token = createSASessionToken();
+  res.setHeader("Set-Cookie", buildSACookie(token, req));
+  res.json({ authenticated: true });
+});
+
+// SA logout
+app.post("/api/sa/logout", (req, res) => {
+  res.setHeader("Set-Cookie", `${SA_SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+  res.json({ authenticated: false });
+});
+
+// ── SA API Routes ─────────────────────────────────────────────────────────────
+
+// Status: Ollama + config check (public — needed for PIN gate to know if pin is required)
+app.get("/api/sa/status", async (req, res) => {
+  const [ollama, appleAI] = await Promise.all([checkOllama(), checkAppleAI()]);
+  const saAuthenticated = isSAAuthenticated(req);
+  res.json({
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
+    authConfigured: isAuthConfigured(),
+    authenticated: isAuthenticated(req),
+    saAuthenticated,
+    pinRequired: isSAPinConfigured(),
+    ollama,
+    appleAI,
+    kbSize: saAuthenticated ? loadAllKBEntries().length : 0,
+    conversationCount: saAuthenticated ? loadAllConversations().length : 0,
+  });
+});
+
+// List conversations
+app.get("/api/sa/conversations", requireSAAuth, (req, res) => {
+  const conversations = loadAllConversations().map(c => ({
+    id: c.id,
+    title: c.title,
+    messageCount: c.messages.length,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+    preview: c.messages[c.messages.length - 1]?.content?.slice(0, 100) ?? "",
+  }));
+  res.json({ conversations });
+});
+
+// Create conversation
+app.post("/api/sa/conversations", requireSAAuth, (req, res) => {
+  const { title } = req.body as { title?: string };
+  const conv: SAConversation = {
+    id: crypto.randomUUID(),
+    title: title || "New Conversation",
+    messages: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  saveConversation(conv);
+  res.json(conv);
+});
+
+// Get single conversation
+app.get("/api/sa/conversations/:id", requireSAAuth, (req, res) => {
+  const conv = loadConversation(req.params.id);
+  if (!conv) return res.status(404).json({ error: "Conversation not found" });
+  res.json(conv);
+});
+
+// Delete conversation
+app.delete("/api/sa/conversations/:id", requireSAAuth, (req, res) => {
+  deleteConversation(req.params.id);
+  res.json({ deleted: true });
+});
+
+// Send message to Super Agent (main chat endpoint)
+app.post("/api/sa/conversations/:id/messages", requireSAAuth, async (req, res) => {
+  const { message, model: requestedModel } = req.body as { message: string; model?: string };
+  if (!message) return res.status(400).json({ error: "Message required" });
+
+  let conv = loadConversation(req.params.id);
+  if (!conv) {
+    conv = {
+      id: req.params.id,
+      title: message.slice(0, 60),
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  // Auto-title on first message
+  if (conv.messages.length === 0) {
+    conv.title = message.slice(0, 60) + (message.length > 60 ? "…" : "");
+  }
+
+  const userMsg: SAMessage = {
+    id: crypto.randomUUID(),
+    role: "user",
+    content: message,
+    timestamp: new Date().toISOString(),
+  };
+  conv.messages.push(userMsg);
+
+  // RAG: search KB for relevant context
+  const kbEntries = loadAllKBEntries();
+  const relevant = searchKB(message, kbEntries, 5);
+  const contextBlock = relevant.length > 0
+    ? `\n\n--- RELEVANT CONTEXT FROM KNOWLEDGE BASE ---\n${relevant.map(e =>
+        `[${e.title}]: ${e.content.slice(0, 500)}`
+      ).join("\n\n")}\n--- END CONTEXT ---`
+    : "";
+
+  const systemWithContext = SA_SYSTEM_PROMPT + contextBlock;
+
+  // Build message history for AI (last 20 messages)
+  const historyMessages = conv.messages
+    .slice(-21, -1)
+    .map(m => ({ role: m.role === "user" ? "user" : "model" as const, parts: [{ text: m.content }] }));
+
+  let replyText = "";
+  let usedModel = requestedModel || "gemini-2.0-flash";
+
+  try {
+    // Route to appropriate AI backend
+    if (requestedModel?.startsWith("apple/") || requestedModel === "apple-foundationmodel") {
+      // Apple Foundation Model via apfel
+      const appleMessages = conv.messages
+        .slice(-10, -1) // smaller window — 4096 token context
+        .map(m => ({ role: m.role, content: m.content }));
+      replyText = await chatWithAppleAI(systemWithContext, appleMessages);
+      usedModel = "apple/foundation";
+    } else if (requestedModel?.startsWith("ollama/")) {
+      // Explicit Ollama request
+      const ollamaModel = requestedModel.replace("ollama/", "");
+      const ollamaMessages = [
+        ...conv.messages.slice(-20, -1).map(m => ({ role: m.role, content: m.content })),
+      ];
+      replyText = await chatWithOllama(ollamaModel, systemWithContext, ollamaMessages);
+      usedModel = `ollama/${ollamaModel}`;
+    } else if (process.env.GEMINI_API_KEY) {
+      const ai = getAiClient();
+      const modelId = requestedModel || "gemini-2.0-flash";
+      const chat = ai.chats.create({
+        model: modelId,
+        config: { systemInstruction: systemWithContext },
+        history: historyMessages,
+      });
+      const response = await chat.sendMessage({ message });
+      replyText = response.text ?? "";
+      usedModel = modelId;
+    } else {
+      replyText = "⚠️ No AI model configured. Set GEMINI_API_KEY in your .env.local file, or run Ollama locally and select an Ollama model.";
+      usedModel = "none";
+    }
+  } catch (err: any) {
+    replyText = `⚠️ Error: ${err.message}`;
+  }
+
+  const assistantMsg: SAMessage = {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content: replyText,
+    timestamp: new Date().toISOString(),
+    model: usedModel,
+  };
+  conv.messages.push(assistantMsg);
+  conv.updatedAt = new Date().toISOString();
+  saveConversation(conv);
+
+  res.json({ message: assistantMsg, conversation: { id: conv.id, title: conv.title } });
+});
+
+// ── Knowledge Base Routes ─────────────────────────────────────────────────────
+
+// List KB entries
+app.get("/api/sa/kb", requireSAAuth, (req, res) => {
+  const entries = loadAllKBEntries();
+  res.json({ entries, total: entries.length });
+});
+
+// Search KB
+app.post("/api/sa/kb/search", requireSAAuth, (req, res) => {
+  const { query, limit } = req.body as { query: string; limit?: number };
+  if (!query) return res.status(400).json({ error: "Query required" });
+  const entries = loadAllKBEntries();
+  const results = searchKB(query, entries, limit || 10);
+  res.json({ results });
+});
+
+// Add KB entry
+app.post("/api/sa/kb", requireSAAuth, (req, res) => {
+  const { title, content, tags, source } = req.body as Partial<KBEntry>;
+  if (!title || !content) return res.status(400).json({ error: "title and content required" });
+
+  const entry: KBEntry = {
+    id: crypto.randomUUID(),
+    title: title.trim(),
+    content: content.trim(),
+    tags: Array.isArray(tags) ? tags : [],
+    source: (source as KBEntry["source"]) || "manual",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  saveKBEntry(entry);
+  res.json(entry);
+});
+
+// Update KB entry
+app.put("/api/sa/kb/:id", requireSAAuth, (req, res) => {
+  const { title, content, tags } = req.body as Partial<KBEntry>;
+  const filePath = path.join(SA_KB_DIR, `${req.params.id}.json`);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Entry not found" });
+
+  const existing = JSON.parse(fs.readFileSync(filePath, "utf-8")) as KBEntry;
+  const updated: KBEntry = {
+    ...existing,
+    title: title?.trim() ?? existing.title,
+    content: content?.trim() ?? existing.content,
+    tags: Array.isArray(tags) ? tags : existing.tags,
+    updatedAt: new Date().toISOString(),
+  };
+  saveKBEntry(updated);
+  res.json(updated);
+});
+
+// Delete KB entry
+app.delete("/api/sa/kb/:id", requireSAAuth, (req, res) => {
+  deleteKBEntry(req.params.id);
+  res.json({ deleted: true });
+});
+
+// Import Cursor chat export (paste raw JSON or text)
+app.post("/api/sa/kb/import-cursor-chat", requireSAAuth, (req, res) => {
+  const { rawText, title } = req.body as { rawText: string; title?: string };
+  if (!rawText) return res.status(400).json({ error: "rawText required" });
+
+  // Try to parse as JSON (Cursor export format), fallback to plain text
+  let content = rawText;
+  let parsedTitle = title || "Cursor Chat Import";
+
+  try {
+    const parsed = JSON.parse(rawText);
+    // Handle various Cursor export formats
+    if (Array.isArray(parsed)) {
+      content = parsed
+        .map((m: any) => `${m.role ?? m.author ?? "?"}: ${m.content ?? m.text ?? ""}`)
+        .join("\n\n");
+      parsedTitle = title || `Cursor Chat (${parsed.length} messages)`;
+    } else if (parsed.messages) {
+      content = parsed.messages
+        .map((m: any) => `${m.role}: ${m.content}`)
+        .join("\n\n");
+      parsedTitle = title || parsed.title || "Cursor Chat Import";
+    } else {
+      content = JSON.stringify(parsed, null, 2);
+    }
+  } catch {
+    // Plain text — use as-is
+  }
+
+  // Auto-extract tags from content
+  const words = content.toLowerCase().split(/\W+/);
+  const tagCandidates = new Set<string>();
+  const techKeywords = ["typescript","react","express","vite","tailwind","gemini","ollama","api","cursor","myk","entrata","clearworth"];
+  for (const kw of techKeywords) {
+    if (words.includes(kw)) tagCandidates.add(kw);
+  }
+
+  const entry: KBEntry = {
+    id: crypto.randomUUID(),
+    title: parsedTitle,
+    content: content.slice(0, 50000), // cap at 50k chars
+    tags: Array.from(tagCandidates),
+    source: "cursor-chat",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  saveKBEntry(entry);
+  res.json({ entry, charCount: content.length, tags: entry.tags });
+});
+
+// ── Prompt Optimizer ──────────────────────────────────────────────────────────
+
+app.post("/api/sa/optimize-prompt", requireSAAuth, async (req, res) => {
+  const { rawPrompt } = req.body as { rawPrompt: string };
+  if (!rawPrompt) return res.status(400).json({ error: "rawPrompt required" });
+
+  const taskType = detectTaskType(rawPrompt);
+
+  // Model menu with cost/capability info
+  const MODEL_CATALOG: Record<string, { label: string; cost: PromptVariant["estimatedCost"]; strengths: string }> = {
+    "gemini-2.0-flash":   { label: "Gemini 2.0 Flash",   cost: "low",    strengths: "Fast responses, great for quick tasks, summarization, classification" },
+    "gemini-2.5-flash":   { label: "Gemini 2.5 Flash",   cost: "medium", strengths: "Balanced reasoning + speed, coding, structured output" },
+    "gemini-2.5-pro":     { label: "Gemini 2.5 Pro",     cost: "high",   strengths: "Deep reasoning, complex code, long documents, highest accuracy" },
+    "gemini-2.0-flash-lite": { label: "Gemini Flash Lite", cost: "free", strengths: "Ultra-fast, minimal tasks, classification, one-shot Q&A" },
+    "apple/foundation":   { label: "Apple Intelligence (On-Device)", cost: "free", strengths: "Apple's on-device 3B model — 100% private, Neural Engine accelerated, no cloud, works offline. macOS 26+ / Apple Silicon only" },
+    "ollama/llama3":      { label: "Llama 3 (Local)",    cost: "free",   strengths: "100% private, runs locally, good for sensitive data, general use" },
+    "ollama/mistral":     { label: "Mistral (Local)",    cost: "free",   strengths: "Fast local model, good for coding + structured tasks, private" },
+    "ollama/codellama":   { label: "Code Llama (Local)", cost: "free",   strengths: "Local code generation, debugging, refactoring — fully offline" },
+    "ollama/phi3":        { label: "Phi-3 Mini (Local)", cost: "free",   strengths: "Tiny + fast local model, classification, quick Q&A, edge deployment" },
+  };
+
+  // Route by task type
+  const taskRoutes: Record<string, Array<{ model: string; complexity: PromptVariant["complexity"]; useCase: string }>> = {
+    coding:    [
+      { model: "gemini-2.5-flash", complexity: "balanced", useCase: "Write/review code with good reasoning" },
+      { model: "gemini-2.5-pro",   complexity: "thorough", useCase: "Complex architecture, debugging, full codebase analysis" },
+      { model: "ollama/codellama", complexity: "fast",     useCase: "Local code generation — no API cost, fully private" },
+    ],
+    creative:  [
+      { model: "gemini-2.5-flash", complexity: "balanced", useCase: "Copywriting, emails, creative content" },
+      { model: "gemini-2.5-pro",   complexity: "thorough", useCase: "Long-form writing, brand strategy, narrative depth" },
+      { model: "ollama/llama3",    complexity: "fast",     useCase: "Draft content locally, iterate cheaply" },
+    ],
+    analysis:  [
+      { model: "gemini-2.5-pro",   complexity: "thorough", useCase: "Deep analysis, comparisons, structured reports" },
+      { model: "gemini-2.5-flash", complexity: "balanced", useCase: "Summaries and key insights at lower cost" },
+      { model: "ollama/mistral",   complexity: "fast",     useCase: "Local quick analysis, no API dependency" },
+    ],
+    research:  [
+      { model: "gemini-2.5-flash", complexity: "balanced", useCase: "Research summaries and explanation" },
+      { model: "gemini-2.0-flash", complexity: "fast",     useCase: "Quick factual lookups and definitions" },
+      { model: "ollama/llama3",    complexity: "fast",     useCase: "Private local research, no data sharing" },
+    ],
+    quick:     [
+      { model: "gemini-2.0-flash",     complexity: "fast",     useCase: "Fast answer, minimal token cost" },
+      { model: "gemini-2.0-flash-lite", complexity: "fast",    useCase: "Cheapest option for simple questions" },
+      { model: "ollama/phi3",           complexity: "fast",    useCase: "Ultra-fast local answer, no cost" },
+    ],
+    "local-ok": [
+      { model: "gemini-2.0-flash",  complexity: "fast",     useCase: "Standard task with good speed/cost balance" },
+      { model: "ollama/llama3",     complexity: "balanced", useCase: "Free local option — good quality general model" },
+      { model: "ollama/mistral",    complexity: "fast",     useCase: "Local alternative with good reasoning" },
+    ],
+  };
+
+  const routes = taskRoutes[taskType] || taskRoutes["local-ok"];
+
+  // Generate improved prompt variants using Gemini if available
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const ai = getAiClient();
+      const optimizerPrompt = `You are an expert prompt engineer for Designs by Myk LLC's Super Agent.
+Given a raw user request, generate ${routes.length} improved prompt variants optimized for different AI models.
+
+Raw request: "${rawPrompt}"
+Detected task type: ${taskType}
+
+For each variant, optimize the prompt for these specific model + use-case combinations:
+${routes.map((r, i) => `Variant ${i+1}: ${MODEL_CATALOG[r.model]?.label ?? r.model} — ${r.useCase}`).join("\n")}
+
+Rules:
+1. Keep the user's core intent but make it clearer and more actionable
+2. Add context, constraints, and output format hints that help the specific model
+3. For local models: keep prompts concise (they have smaller context windows)
+4. For Pro models: add detail, ask for reasoning, specify edge cases
+5. For Flash/fast models: focus on direct, clear instructions
+6. Each variant should be meaningfully different — not just the same text repeated
+
+Return JSON:
+{
+  "taskType": "${taskType}",
+  "variants": [
+    {
+      "promptText": "...",
+      "rationale": "why this version is better and what makes it optimal for this model"
+    }
+  ]
+}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: optimizerPrompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              taskType: { type: Type.STRING },
+              variants: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    promptText: { type: Type.STRING },
+                    rationale: { type: Type.STRING },
+                  },
+                  required: ["promptText", "rationale"],
+                },
+              },
+            },
+            required: ["taskType", "variants"],
+          },
+        },
+      });
+
+      const parsed = JSON.parse(response.text || "{}") as { variants: Array<{ promptText: string; rationale: string }> };
+
+      const variants: PromptVariant[] = routes.map((route, i) => {
+        const catalog = MODEL_CATALOG[route.model];
+        return {
+          promptText: parsed.variants?.[i]?.promptText ?? rawPrompt,
+          model: route.model,
+          modelLabel: catalog?.label ?? route.model,
+          rationale: parsed.variants?.[i]?.rationale ?? catalog?.strengths ?? "",
+          useCase: route.useCase,
+          estimatedCost: catalog?.cost ?? "low",
+          complexity: route.complexity,
+        };
+      });
+
+      return res.json({ taskType, variants });
+    } catch {
+      // fall through to simple variant generation
+    }
+  }
+
+  // Fallback: generate simple variants without AI
+  const variants: PromptVariant[] = routes.map(route => {
+    const catalog = MODEL_CATALOG[route.model];
+    let promptText = rawPrompt;
+
+    if (route.complexity === "thorough") {
+      promptText = `${rawPrompt}\n\nPlease be thorough: explain your reasoning step-by-step, cover edge cases, and format output clearly with headers and bullets where appropriate.`;
+    } else if (route.complexity === "fast") {
+      promptText = rawPrompt.length > 200
+        ? `${rawPrompt.slice(0, 200).trim()}... [Be concise — direct answer only.]`
+        : rawPrompt;
+    }
+
+    return {
+      promptText,
+      model: route.model,
+      modelLabel: catalog?.label ?? route.model,
+      rationale: catalog?.strengths ?? "",
+      useCase: route.useCase,
+      estimatedCost: catalog?.cost ?? "low",
+      complexity: route.complexity,
+    };
+  });
+
+  res.json({ taskType, variants });
+});
+
+// Ollama proxy: check status + list models
+app.get("/api/sa/local-models", requireSAAuth, async (req, res) => {
+  const result = await checkOllama();
+  res.json(result);
+});
+
+// Apple AI: check status
+app.get("/api/sa/apple-ai", requireSAAuth, async (req, res) => {
+  const result = await checkAppleAI();
+  res.json({ ...result, url: process.env.APPLE_AI_URL || "http://localhost:11435/v1" });
+});
+
+// Pull/run an Ollama model (triggers download)
+app.post("/api/sa/local-models/pull", requireSAAuth, async (req, res) => {
+  const { model } = req.body as { model: string };
+  if (!model) return res.status(400).json({ error: "model required" });
+  const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
+  try {
+    const resp = await fetch(`${ollamaUrl}/api/pull`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: model, stream: false }),
+      signal: AbortSignal.timeout(300000),
+    });
+    res.json({ ok: resp.ok, status: resp.status });
+  } catch (err: any) {
+    res.status(503).json({ error: err.message, hint: "Make sure Ollama is running: https://ollama.com" });
+  }
+});
+
 // Setup development or production server modes
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true, allowedHosts: true },
-      appType: "spa",
+      appType: "mpa",
     });
     app.use(vite.middlewares);
-    console.log("Vite middleware mounted for development.");
+
+    // In SA_ONLY dev mode redirect / to the Super Agent page
+    if (SA_ONLY) {
+      app.get("/", (req, res) => res.redirect("/super-agent.html"));
+    }
+
+    console.log(SA_ONLY
+      ? "Vite middleware mounted — SA_ONLY mode (Super Agent only)."
+      : "Vite middleware mounted for development."
+    );
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+
+    if (SA_ONLY) {
+      // SA_ONLY: route / and all SPA paths to super-agent.html BEFORE static files
+      // so dist/index.html (Entrata app) never gets served.
+      const saHtml = path.join(distPath, "super-agent.html");
+      const serveSA = (req: Request, res: Response) => {
+        if (fs.existsSync(saHtml)) {
+          res.sendFile(saHtml);
+        } else {
+          res.status(503).send("Super Agent not built. Run: npm run build");
+        }
+      };
+      app.get("/", serveSA);
+      app.use(express.static(distPath));
+      app.get("*", serveSA); // catch-all for SPA navigation
+    } else {
+      app.use(express.static(distPath));
+
+      // Super Agent SPA — serve its HTML for any /super-agent/* path
+      app.get(["/super-agent", "/super-agent/*"], (req, res) => {
+        const saHtml = path.join(distPath, "super-agent.html");
+        if (fs.existsSync(saHtml)) {
+          res.sendFile(saHtml);
+        } else {
+          res.status(404).send("Super Agent not built. Run: npm run build");
+        }
+      });
+
+      // Main Entrata app catch-all
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+
     console.log("Serving compiled static files from /dist.");
   }
 
+  const mode = SA_ONLY ? "Super Agent (SA_ONLY)" : "TheOptimizer + Super Agent";
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`TheOptimizer server running at http://0.0.0.0:${PORT}`);
+    console.log(`${mode} server running at http://0.0.0.0:${PORT}`);
+    if (SA_ONLY) {
+      console.log(`  Super Agent: http://0.0.0.0:${PORT}/`);
+    } else {
+      console.log(`  Main app:    http://0.0.0.0:${PORT}/`);
+      console.log(`  Super Agent: http://0.0.0.0:${PORT}/super-agent.html`);
+    }
   });
 }
 

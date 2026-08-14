@@ -1,0 +1,20 @@
+{
+  "name": "MYK Super Agent",
+  "short_name": "MYK Agent",
+  "description": "Unified AI agent for all MYK projects and brands — Designs by Myk LLC",
+  "start_url": "/super-agent.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/sa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "lang": "en-US"
+}
