@@ -23,7 +23,10 @@ services:
         sync: false
       - key: APPLE_AI_URL
         sync: false
-      # Brain Engine bridge — myk-daemon on the Mac host via Cloudflare tunnel
+      # Brain Engine bridge — myk-daemon on the Mac host via Cloudflare tunnel.
+      # DAEMON_SECRET must match the Mac's ~/MYK-BRAIN-Workspace/.env.local.
+      # Remote shell (run_brain_engine_command) also needs DAEMON_ALLOW_EXEC=1
+      # on the Mac daemon — no Render var required for that.
       - key: MYK_DAEMON_URL
         value: https://daemon.askmyk.io
       - key: DAEMON_SECRET
