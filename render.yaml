@@ -1,5 +1,30 @@
 services:
   - type: web
+    name: queenscustoms-shop
+    runtime: node
+    rootDir: queenscustoms
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/server.cjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: QC_ADMIN_USERNAME
+        sync: false
+      - key: QC_ADMIN_PASSWORD
+        sync: false
+      - key: QC_AUTH_SECRET
+        sync: false
+    disk:
+      name: queenscustoms-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+
+  - type: web
     name: entrata-training
     runtime: node
     plan: free
