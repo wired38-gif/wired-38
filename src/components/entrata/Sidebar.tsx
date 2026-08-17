@@ -2,7 +2,7 @@ import React from "react";
 import {
   Home, FileText, Wrench, DollarSign, BarChart2,
   Users, ChevronRight, Star, BookOpen, Youtube,
-  Building2, Layers
+  Building2, Layers, Plug
 } from "lucide-react";
 import { EntrataWorkflow, RoleType, WorkflowProgress, WorkflowSuite } from "../../entrataTypes";
 import { ROLES, WORKFLOW_PLATFORM_MAP, OXP_SUITES, RXP_SUITES } from "../../data/workflows";
@@ -14,7 +14,7 @@ interface SidebarProps {
   selectedRole: RoleType;
   onRoleChange: (role: RoleType) => void;
   onWorkflowSelect: (id: string) => void;
-  onViewChange: (view: "workflow" | "reference" | "glossary" | "videos") => void;
+  onViewChange: (view: "workflow" | "reference" | "glossary" | "videos" | "oauth") => void;
   currentView: string;
   progress: Record<string, WorkflowProgress>;
 }
@@ -154,6 +154,16 @@ export function Sidebar({
             }`}
           >
             <BookOpen size={11} /> Glossary
+          </button>
+          <button
+            onClick={() => onViewChange("oauth")}
+            className={`col-span-2 flex items-center justify-center gap-1.5 py-2 rounded-md text-[10px] font-semibold transition-all border ${
+              currentView === "oauth"
+                ? "bg-teal-600/20 text-teal-400 border-teal-500/30"
+                : "text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-800"
+            }`}
+          >
+            <Plug size={11} /> OAuth & Integrations
           </button>
         </div>
       </div>
