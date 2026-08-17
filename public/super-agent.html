@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Super Agent — MYK Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .tab-active { background: rgba(99,102,241,0.15); color: #a5b4fc; border-left: 3px solid #6366f1; }
+    .tab-inactive { color: #6b7280; border-left: 3px solid transparent; }
+    .tab-inactive:hover { background: rgba(255,255,255,0.04); color: #9ca3af; }
+    textarea { resize: vertical; }
+    .status-open    { background: #1e3a5f; color: #60a5fa; }
+    .status-in-progress { background: #2d2a1a; color: #fbbf24; }
+    .status-resolved    { background: #0f2a1a; color: #34d399; }
+    .daemon-on  { background: #0f2a1a; color: #34d399; }
+    .daemon-off { background: #2a1010; color: #f87171; }
+    pre { white-space: pre-wrap; word-break: break-all; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<!-- ═══════════════════ LOGIN SCREEN ═══════════════════ -->
+<div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-14 h-14 bg-indigo-600/20 rounded-2xl border border-indigo-500/30 mb-4">
+        <svg class="w-7 h-7 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 3H5.25A2.25 2.25 0 003 5.25v13.5A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75v-4.5m-7.5-9l7.5 7.5M21 3l-7.5 7.5"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-black text-white">Super Agent</h1>
+      <p class="text-sm text-gray-500 mt-1">MYK.IO Admin Control Panel</p>
+    </div>
+
+    <div id="login-not-configured" class="hidden bg-amber-900/20 border border-amber-600/30 rounded-xl p-4 mb-4 text-sm text-amber-300">
+      ⚠️ Admin credentials are not yet configured on the server. Set
+      <code class="bg-amber-900/40 px-1 rounded">ADMIN_USERNAME</code>,
+      <code class="bg-amber-900/40 px-1 rounded">ADMIN_PASSWORD</code>, and
+      <code class="bg-amber-900/40 px-1 rounded">AUTH_SECRET</code> as environment variables.
+    </div>
+
+    <div id="login-error" class="hidden bg-red-900/20 border border-red-600/30 rounded-xl p-3 mb-4 text-sm text-red-300"></div>
+
+    <form id="login-form" class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-gray-400 mb-1.5">Username</label>
+        <input id="login-user" type="text" autocomplete="username"
+          class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+          placeholder="admin" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-400 mb-1.5">Password</label>
+        <input id="login-pass" type="password" autocomplete="current-password"
+          class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+          placeholder="••••••••" />
+      </div>
+      <button type="submit" id="login-btn"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50">
+        Sign In
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════ ADMIN PANEL ═══════════════════ -->
+<div id="admin-panel" class="hidden flex h-screen">
+
+  <!-- Sidebar -->
+  <aside class="w-56 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
+    <div class="px-4 py-4 border-b border-gray-800">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 bg-indigo-600/30 rounded-lg flex items-center justify-center">
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-xs font-black text-white leading-none">Super Agent</div>
+          <div class="text-[10px] text-gray-500">MYK.IO Admin</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="flex-1 py-3 space-y-0.5 px-2">
+      <button onclick="showTab('overview')" data-tab="overview"
+        class="tab-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all">
+        📊 Overview
+      </button>
+      <button onclick="showTab('daemon')" data-tab="daemon"
+        class="tab-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all">
+        🖥️ Mac Daemon
+      </button>
+      <button onclick="showTab('agents')" data-tab="agents"
+        class="tab-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all">
+        🤖 Agent Configs
+      </button>
+      <button onclick="showTab('trainees')" data-tab="trainees"
+        class="tab-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all">
+        🎓 Trainees
+      </button>
+      <button onclick="showTab('tickets')" data-tab="tickets"
+        class="tab-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all">
+        🎫 Support Tickets
+      </button>
+      <button onclick="showTab('settings')" data-tab="settings"
+        class="tab-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all">
+        ⚙️ Settings
+      </button>
+    </nav>
+
+    <div class="p-3 border-t border-gray-800">
+      <button onclick="signOut()"
+        class="w-full text-left px-3 py-2 text-xs text-gray-500 hover:text-red-400 transition-colors rounded-lg hover:bg-red-900/10">
+        Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 overflow-y-auto">
+
+    <!-- ─── OVERVIEW ─── -->
+    <div id="tab-overview" class="tab-content p-6 space-y-6">
+      <h2 class="text-lg font-black text-white">Overview</h2>
+
+      <div id="overview-cards" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- filled by JS -->
+      </div>
+
+      <div id="overview-env" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- env status cards filled by JS -->
+      </div>
+    </div>
+
+    <!-- ─── MAC DAEMON ─── -->
+    <div id="tab-daemon" class="tab-content hidden p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-black text-white">Mac Daemon</h2>
+        <button onclick="daemonPing()"
+          class="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-semibold transition-colors">
+          <span id="daemon-ping-icon">🔄</span> Ping Daemon
+        </button>
+      </div>
+
+      <div id="daemon-status-card" class="bg-gray-900 border border-gray-800 rounded-xl p-4 text-sm">
+        <div class="text-gray-500 italic">Click "Ping Daemon" to check connection status.</div>
+      </div>
+
+      <!-- Run Command -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+        <h3 class="text-sm font-bold text-white">Run Command on Mac</h3>
+        <div class="flex gap-2">
+          <input id="daemon-cwd" type="text" placeholder="Working dir (optional)"
+            class="w-40 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500" />
+          <input id="daemon-cmd" type="text" placeholder="e.g. npm run build"
+            class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+            onkeydown="if(event.key==='Enter') daemonRun()" />
+          <button onclick="daemonRun()"
+            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors">
+            Run
+          </button>
+        </div>
+        <div id="daemon-run-output" class="hidden bg-gray-950 border border-gray-800 rounded-lg p-3 font-mono text-xs text-green-300 max-h-64 overflow-y-auto"></div>
+      </div>
+
+      <!-- Trigger Build -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+        <h3 class="text-sm font-bold text-white">Trigger Build</h3>
+        <div class="flex gap-3 items-end">
+          <div class="flex-1">
+            <label class="block text-xs text-gray-500 mb-1">Build target / args (JSON, optional)</label>
+            <input id="daemon-build-args" type="text" placeholder='{"target":"production"}'
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500" />
+          </div>
+          <button onclick="daemonBuild()"
+            class="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-colors">
+            Trigger Build
+          </button>
+        </div>
+        <div id="daemon-build-output" class="hidden bg-gray-950 border border-gray-800 rounded-lg p-3 font-mono text-xs text-emerald-300 max-h-48 overflow-y-auto"></div>
+      </div>
+
+      <!-- Generic proxy -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+        <h3 class="text-sm font-bold text-white">Custom Daemon Request</h3>
+        <div class="flex gap-2 items-end">
+          <select id="proxy-method" class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+            <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+          </select>
+          <input id="proxy-path" type="text" placeholder="/logs"
+            class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500" />
+          <button onclick="daemonProxy()"
+            class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-bold transition-colors">
+            Send
+          </button>
+        </div>
+        <textarea id="proxy-body" rows="3" placeholder='Body (JSON, for POST/PUT/PATCH)'
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 font-mono"></textarea>
+        <div id="proxy-output" class="hidden bg-gray-950 border border-gray-800 rounded-lg p-3 font-mono text-xs text-blue-300 max-h-64 overflow-y-auto"></div>
+      </div>
+    </div>
+
+    <!-- ─── AGENT CONFIGS ─── -->
+    <div id="tab-agents" class="tab-content hidden p-6 space-y-5">
+      <h2 class="text-lg font-black text-white">Agent Configurations</h2>
+      <p class="text-sm text-gray-400">Edit the system prompts loaded into each AI agent. Changes take effect immediately — no restart required.</p>
+      <div id="agents-list" class="space-y-4">
+        <!-- filled by JS -->
+      </div>
+    </div>
+
+    <!-- ─── TRAINEES ─── -->
+    <div id="tab-trainees" class="tab-content hidden p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-black text-white">Trainees</h2>
+        <button onclick="loadTrainees()"
+          class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-semibold transition-colors">
+          ↻ Refresh
+        </button>
+      </div>
+      <div id="trainees-table" class="overflow-x-auto">
+        <div class="text-gray-500 text-sm italic">Loading…</div>
+      </div>
+    </div>
+
+    <!-- ─── SUPPORT TICKETS ─── -->
+    <div id="tab-tickets" class="tab-content hidden p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-black text-white">Queen Support Tickets</h2>
+        <button onclick="loadTickets()"
+          class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-semibold transition-colors">
+          ↻ Refresh
+        </button>
+      </div>
+      <div id="tickets-list" class="space-y-3">
+        <div class="text-gray-500 text-sm italic">Loading…</div>
+      </div>
+    </div>
+
+    <!-- ─── SETTINGS ─── -->
+    <div id="tab-settings" class="tab-content hidden p-6 space-y-5">
+      <h2 class="text-lg font-black text-white">Settings</h2>
+
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+        <h3 class="text-sm font-bold text-white">Training Invite Code</h3>
+        <p class="text-xs text-gray-400">Anyone with this code can self-register as a trainee.</p>
+        <div class="flex gap-3 items-end">
+          <div class="flex-1">
+            <input id="settings-invite-code" type="text" placeholder="ENTRATA2026"
+              class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 font-mono uppercase" />
+          </div>
+          <button onclick="saveInviteCode()"
+            class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold transition-colors">
+            Save
+          </button>
+        </div>
+        <div id="settings-msg" class="hidden text-xs text-emerald-400"></div>
+      </div>
+
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
+        <h3 class="text-sm font-bold text-white">Environment Variables</h3>
+        <p class="text-xs text-gray-400">These must be set in the Render dashboard. Changes here require a redeploy.</p>
+        <div id="settings-env" class="space-y-2"><!-- filled by JS --></div>
+        <div class="mt-4 p-3 bg-amber-900/20 border border-amber-700/30 rounded-lg text-xs text-amber-300 space-y-1">
+          <div class="font-bold">Daemon Setup (Required for Mac control)</div>
+          <div>In Render → <strong>myk-super-agent</strong> → Environment, add:</div>
+          <div class="font-mono bg-amber-900/20 rounded p-2 mt-1 space-y-1">
+            <div>MYK_DAEMON_URL = https://daemon.askmyk.io</div>
+            <div>DAEMON_SECRET = &lt;value from ~/MYK-BRAIN-Workspace/.env.local lines 312–320&gt;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed bottom-5 right-5 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white shadow-2xl z-50 max-w-xs"></div>
+
+<script>
+// ═══════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════
+function show(id) { document.getElementById(id)?.classList.remove('hidden'); }
+function hide(id) { document.getElementById(id)?.classList.add('hidden'); }
+function toggle(id, visible) { visible ? show(id) : hide(id); }
+function el(id) { return document.getElementById(id); }
+function qs(sel) { return document.querySelector(sel); }
+
+function toast(msg, color = 'text-white') {
+  const t = el('toast');
+  t.className = `fixed bottom-5 right-5 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm shadow-2xl z-50 max-w-xs ${color}`;
+  t.textContent = msg;
+  show('toast');
+  setTimeout(() => hide('toast'), 3500);
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString();
+}
+
+// ═══════════════════════════════════════════
+//  AUTH
+// ═══════════════════════════════════════════
+async function checkAuth() {
+  const { data } = await api('GET', '/api/status');
+  if (!data.authConfigured) { show('login-not-configured'); }
+  if (data.authenticated) { showPanel(); }
+  else { show('login-screen'); }
+}
+
+el('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = el('login-btn');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  hide('login-error');
+  const username = el('login-user').value.trim();
+  const password = el('login-pass').value;
+  const { ok, data } = await api('POST', '/api/login', { username, password });
+  if (ok) { showPanel(); }
+  else {
+    el('login-error').textContent = data.error || 'Login failed.';
+    show('login-error');
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+});
+
+async function signOut() {
+  await api('POST', '/api/logout');
+  location.reload();
+}
+
+// ═══════════════════════════════════════════
+//  PANEL + TABS
+// ═══════════════════════════════════════════
+function showPanel() {
+  hide('login-screen');
+  el('admin-panel').classList.remove('hidden');
+  el('admin-panel').classList.add('flex');
+  showTab('overview');
+}
+
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(d => d.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    const active = b.dataset.tab === name;
+    b.className = `tab-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all ${active ? 'tab-active' : 'tab-inactive'}`;
+  });
+  const tab = el('tab-' + name);
+  if (tab) tab.classList.remove('hidden');
+  if (name === 'overview')  loadOverview();
+  if (name === 'daemon')    daemonPing();
+  if (name === 'agents')    loadAgents();
+  if (name === 'trainees')  loadTrainees();
+  if (name === 'tickets')   loadTickets();
+  if (name === 'settings')  loadSettings();
+}
+
+// ═══════════════════════════════════════════
+//  OVERVIEW
+// ═══════════════════════════════════════════
+async function loadOverview() {
+  const [statusR, traineesR, ticketsR] = await Promise.all([
+    api('GET', '/api/status'),
+    api('GET', '/api/admin/trainees'),
+    api('GET', '/api/admin/queen-tickets'),
+  ]);
+  const s = statusR.data;
+  const t = traineesR.data;
+  const q = ticketsR.data;
+
+  const openTickets = (q.tickets || []).filter(x => x.status === 'open').length;
+  const cards = [
+    { label: 'Trainees', value: t.total ?? '—', icon: '🎓', color: 'text-blue-400' },
+    { label: 'Workflows Started', value: (t.trainees||[]).reduce((a,x)=>a+x.workflowsStarted,0), icon: '📋', color: 'text-indigo-400' },
+    { label: 'Open Tickets', value: openTickets, icon: '🎫', color: openTickets > 0 ? 'text-amber-400' : 'text-emerald-400' },
+    { label: 'Total Tickets', value: q.total ?? '—', icon: '📮', color: 'text-purple-400' },
+  ];
+  el('overview-cards').innerHTML = cards.map(c => `
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div class="text-2xl mb-1">${c.icon}</div>
+      <div class="text-2xl font-black ${c.color}">${c.value}</div>
+      <div class="text-xs text-gray-500 mt-0.5">${c.label}</div>
+    </div>
+  `).join('');
+
+  const envItems = [
+    { label: 'Admin Auth', ok: s.authConfigured, tip: 'ADMIN_USERNAME + ADMIN_PASSWORD + AUTH_SECRET' },
+    { label: 'Gemini AI', ok: s.hasApiKey, tip: 'GEMINI_API_KEY' },
+    { label: 'Mac Daemon', ok: s.daemonConfigured ?? false, tip: 'MYK_DAEMON_URL + DAEMON_SECRET' },
+    { label: 'Cursor API', ok: s.hasCursorApiKey, tip: 'CURSOR_API_KEY' },
+  ];
+  el('overview-env').innerHTML = `
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <h3 class="text-sm font-bold text-white mb-3">Environment Status</h3>
+      <div class="space-y-2">
+        ${envItems.map(e => `
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-gray-400">${e.label}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-gray-600 text-[10px]">${e.tip}</span>
+              <span class="px-2 py-0.5 rounded-full font-semibold ${e.ok ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}">
+                ${e.ok ? '✓ Set' : '✗ Missing'}
+              </span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <h3 class="text-sm font-bold text-white mb-3">Server</h3>
+      <div class="space-y-2 text-xs text-gray-400">
+        <div class="flex justify-between"><span>Status</span><span class="text-emerald-400 font-semibold">● Online</span></div>
+        <div class="flex justify-between"><span>Checked</span><span class="text-gray-300">${fmtDate(s.timestamp)}</span></div>
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════
+//  MAC DAEMON
+// ═══════════════════════════════════════════
+async function daemonPing() {
+  el('daemon-ping-icon').className = 'spin inline-block';
+  el('daemon-ping-icon').textContent = '⟳';
+  const { ok, status, data } = await api('GET', '/api/admin/daemon/status');
+  el('daemon-ping-icon').className = '';
+  el('daemon-ping-icon').textContent = ok ? '✓' : '✗';
+  const card = el('daemon-status-card');
+  if (ok) {
+    card.className = 'daemon-on bg-gray-900 border border-emerald-700/40 rounded-xl p-4';
+    card.innerHTML = `
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+        <span class="text-sm font-bold text-emerald-300">Daemon Connected</span>
+      </div>
+      <pre class="text-xs text-emerald-200/80 overflow-x-auto">${JSON.stringify(data, null, 2)}</pre>
+    `;
+  } else {
+    card.className = 'daemon-off bg-gray-900 border border-red-700/40 rounded-xl p-4';
+    const errMsg = data?.error || `HTTP ${status}`;
+    const isDaemonMissing = errMsg.includes('not configured') || errMsg.includes('MYK_DAEMON_URL');
+    card.innerHTML = `
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-2 h-2 rounded-full bg-red-400"></div>
+        <span class="text-sm font-bold text-red-300">Daemon Unreachable</span>
+      </div>
+      <p class="text-xs text-red-200/80 mb-2">${errMsg}</p>
+      ${isDaemonMissing ? `
+        <div class="mt-3 p-3 bg-amber-900/20 border border-amber-700/30 rounded-lg text-xs text-amber-300">
+          <div class="font-bold mb-1">Fix: Add these to Render → myk-super-agent → Environment:</div>
+          <div class="font-mono space-y-0.5">
+            <div>MYK_DAEMON_URL = https://daemon.askmyk.io</div>
+            <div>DAEMON_SECRET = &lt;from ~/MYK-BRAIN-Workspace/.env.local lines 312–320&gt;</div>
+          </div>
+        </div>` : ''}
+    `;
+  }
+}
+
+async function daemonRun() {
+  const command = el('daemon-cmd').value.trim();
+  if (!command) return;
+  const cwd = el('daemon-cwd').value.trim() || undefined;
+  const out = el('daemon-run-output');
+  out.classList.remove('hidden');
+  out.textContent = '⟳ Running…';
+  const { ok, data } = await api('POST', '/api/admin/daemon/run', { command, cwd });
+  out.textContent = ok
+    ? (data.output || data.stdout || JSON.stringify(data, null, 2))
+    : '✗ ' + (data.error || JSON.stringify(data));
+  out.className = `bg-gray-950 border border-gray-800 rounded-lg p-3 font-mono text-xs max-h-64 overflow-y-auto ${ok ? 'text-green-300' : 'text-red-300'}`;
+}
+
+async function daemonBuild() {
+  const raw = el('daemon-build-args').value.trim();
+  let body = {};
+  if (raw) { try { body = JSON.parse(raw); } catch { toast('Invalid JSON in build args', 'text-red-400'); return; } }
+  const out = el('daemon-build-output');
+  out.classList.remove('hidden');
+  out.textContent = '⟳ Triggering build…';
+  const { ok, data } = await api('POST', '/api/admin/daemon/build', body);
+  out.textContent = ok
+    ? (data.message || data.output || JSON.stringify(data, null, 2))
+    : '✗ ' + (data.error || JSON.stringify(data));
+  out.className = `bg-gray-950 border border-gray-800 rounded-lg p-3 font-mono text-xs max-h-48 overflow-y-auto ${ok ? 'text-emerald-300' : 'text-red-300'}`;
+}
+
+async function daemonProxy() {
+  const method = el('proxy-method').value;
+  const daemonPath = el('proxy-path').value.trim();
+  if (!daemonPath) return;
+  let body;
+  const rawBody = el('proxy-body').value.trim();
+  if (rawBody && ['POST','PUT','PATCH'].includes(method)) {
+    try { body = JSON.parse(rawBody); } catch { toast('Invalid JSON body', 'text-red-400'); return; }
+  }
+  const out = el('proxy-output');
+  out.classList.remove('hidden');
+  out.textContent = '⟳ Sending…';
+  const res = await fetch('/api/admin/daemon/proxy/' + daemonPath.replace(/^\//, ''), {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const d = await res.json().catch(() => ({}));
+  out.textContent = JSON.stringify(d, null, 2);
+  out.className = `bg-gray-950 border border-gray-800 rounded-lg p-3 font-mono text-xs max-h-64 overflow-y-auto ${res.ok ? 'text-blue-300' : 'text-red-300'}`;
+}
+
+// ═══════════════════════════════════════════
+//  AGENT CONFIGS
+// ═══════════════════════════════════════════
+async function loadAgents() {
+  const { ok, data } = await api('GET', '/api/admin/agent-configs');
+  if (!ok) { el('agents-list').innerHTML = `<p class="text-red-400 text-sm">${data.error||'Error loading.'}</p>`; return; }
+  el('agents-list').innerHTML = data.configs.map(cfg => `
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3" id="agent-card-${cfg.id}">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="text-sm font-bold text-white">${cfg.name}</div>
+          <div class="text-[10px] text-gray-500 font-mono">${cfg.id}</div>
+        </div>
+        <div class="flex items-center gap-2">
+          ${cfg.isCustom ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-900/40 text-indigo-300">Custom</span>` : `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-800 text-gray-500">Default</span>`}
+          ${cfg.isCustom ? `<button onclick="resetAgent('${cfg.id}')" class="text-[10px] text-gray-500 hover:text-red-400 transition-colors">Reset to default</button>` : ''}
+        </div>
+      </div>
+      ${cfg.updatedAt ? `<div class="text-[10px] text-gray-600">Last updated: ${fmtDate(cfg.updatedAt)}</div>` : ''}
+      <textarea id="agent-prompt-${cfg.id}" rows="12"
+        class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2.5 text-xs text-gray-200 font-mono focus:outline-none focus:border-indigo-500"
+      >${escHtml(cfg.systemPrompt)}</textarea>
+      <div class="flex gap-2">
+        <button onclick="saveAgent('${cfg.id}')"
+          class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors">
+          Save Changes
+        </button>
+        <span id="agent-save-msg-${cfg.id}" class="text-xs text-emerald-400 self-center hidden">Saved!</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function saveAgent(id) {
+  const prompt = el(`agent-prompt-${id}`).value;
+  const { ok, data } = await api('PUT', `/api/admin/agent-configs/${id}`, { systemPrompt: prompt });
+  if (ok) {
+    el(`agent-save-msg-${id}`).classList.remove('hidden');
+    setTimeout(() => el(`agent-save-msg-${id}`)?.classList.add('hidden'), 2500);
+    toast('Prompt saved ✓');
+  } else toast('Error: ' + (data.error || 'Save failed'), 'text-red-400');
+}
+
+async function resetAgent(id) {
+  if (!confirm('Reset this agent to the default system prompt? Any custom changes will be lost.')) return;
+  const { ok } = await api('DELETE', `/api/admin/agent-configs/${id}`);
+  if (ok) { toast('Reset to default'); loadAgents(); }
+  else toast('Reset failed', 'text-red-400');
+}
+
+// ═══════════════════════════════════════════
+//  TRAINEES
+// ═══════════════════════════════════════════
+async function loadTrainees() {
+  const { ok, data } = await api('GET', '/api/admin/trainees');
+  const container = el('trainees-table');
+  if (!ok || !data.trainees?.length) {
+    container.innerHTML = '<p class="text-gray-500 text-sm italic">No trainees registered yet.</p>';
+    return;
+  }
+  container.innerHTML = `
+    <table class="w-full text-xs text-left border-collapse">
+      <thead>
+        <tr class="border-b border-gray-800 text-gray-500">
+          <th class="py-2 pr-4 font-semibold">Name</th>
+          <th class="py-2 pr-4 font-semibold">Email</th>
+          <th class="py-2 pr-4 font-semibold">Property</th>
+          <th class="py-2 pr-4 font-semibold">PIN</th>
+          <th class="py-2 pr-4 font-semibold">Workflows</th>
+          <th class="py-2 pr-4 font-semibold">Last Active</th>
+          <th class="py-2 font-semibold"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-800/60">
+        ${data.trainees.map(t => `
+          <tr class="hover:bg-gray-900/40 transition-colors">
+            <td class="py-2.5 pr-4 text-white font-medium">${escHtml(t.name)}</td>
+            <td class="py-2.5 pr-4 text-gray-400">${escHtml(t.email)}</td>
+            <td class="py-2.5 pr-4 text-gray-400">${escHtml(t.property)}</td>
+            <td class="py-2.5 pr-4 font-mono text-indigo-300">${t.pin}</td>
+            <td class="py-2.5 pr-4">
+              <span class="px-1.5 py-0.5 rounded bg-indigo-900/30 text-indigo-300">${t.completedWorkflows} done</span>
+              <span class="px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 ml-1">${t.workflowsStarted} started</span>
+            </td>
+            <td class="py-2.5 pr-4 text-gray-500">${fmtDate(t.lastActiveAt)}</td>
+            <td class="py-2.5">
+              <button onclick="deleteTrainee('${escHtml(t.email)}')"
+                class="text-gray-600 hover:text-red-400 transition-colors text-[10px] font-semibold">
+                Delete
+              </button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <p class="text-xs text-gray-600 mt-2">${data.total} trainee${data.total !== 1 ? 's' : ''} total</p>
+  `;
+}
+
+async function deleteTrainee(email) {
+  if (!confirm(`Delete trainee account for "${email}"? This cannot be undone.`)) return;
+  const { ok, data } = await api('DELETE', `/api/admin/trainees/${encodeURIComponent(email)}`);
+  if (ok) { toast('Trainee deleted'); loadTrainees(); }
+  else toast('Error: ' + (data.error || 'Delete failed'), 'text-red-400');
+}
+
+// ═══════════════════════════════════════════
+//  SUPPORT TICKETS
+// ═══════════════════════════════════════════
+async function loadTickets() {
+  const { ok, data } = await api('GET', '/api/admin/queen-tickets');
+  const container = el('tickets-list');
+  if (!ok || !data.tickets?.length) {
+    container.innerHTML = '<p class="text-gray-500 text-sm italic">No support tickets yet.</p>';
+    return;
+  }
+  container.innerHTML = data.tickets.map(t => `
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div class="flex items-start justify-between gap-3 mb-2">
+        <div>
+          <span class="text-xs font-mono text-gray-500">${t.id}</span>
+          <div class="text-sm font-bold text-white mt-0.5">${escHtml(t.name)}</div>
+          <div class="text-xs text-gray-500">${escHtml(t.email)}</div>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold status-${t.status}">${t.status}</span>
+          <select onchange="updateTicketStatus('${t.id}', this.value)"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-[10px] text-gray-300 focus:outline-none">
+            <option value="open" ${t.status==='open'?'selected':''}>Open</option>
+            <option value="in-progress" ${t.status==='in-progress'?'selected':''}>In Progress</option>
+            <option value="resolved" ${t.status==='resolved'?'selected':''}>Resolved</option>
+          </select>
+        </div>
+      </div>
+      <div class="text-xs text-indigo-300 mb-1 font-semibold">${escHtml(t.issueType)}</div>
+      <p class="text-xs text-gray-400 leading-relaxed">${escHtml(t.description)}</p>
+      <div class="flex gap-4 mt-2 text-[10px] text-gray-600">
+        <span>Created: ${fmtDate(t.createdAt)}</span>
+        <span>Updated: ${fmtDate(t.updatedAt)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function updateTicketStatus(ticketId, status) {
+  const { ok, data } = await api('PATCH', `/api/admin/queen-tickets/${ticketId}`, { status });
+  if (ok) toast('Ticket updated ✓');
+  else toast('Error: ' + (data.error || 'Update failed'), 'text-red-400');
+}
+
+// ═══════════════════════════════════════════
+//  SETTINGS
+// ═══════════════════════════════════════════
+async function loadSettings() {
+  const { ok, data } = await api('GET', '/api/admin/settings');
+  if (!ok) return;
+  el('settings-invite-code').value = data.inviteCode ?? '';
+  const envRows = [
+    { label: 'ADMIN_USERNAME + ADMIN_PASSWORD + AUTH_SECRET', ok: data.authConfigured, name: 'Admin Auth' },
+    { label: 'GEMINI_API_KEY', ok: data.geminiConfigured, name: 'Gemini AI' },
+    { label: 'MYK_DAEMON_URL', ok: data.daemonConfigured, name: 'Daemon URL', val: data.daemonUrl },
+    { label: 'DAEMON_SECRET', ok: data.daemonConfigured, name: 'Daemon Secret' },
+  ];
+  el('settings-env').innerHTML = envRows.map(r => `
+    <div class="flex items-center justify-between text-xs py-1.5 border-b border-gray-800/60">
+      <div>
+        <span class="text-gray-300 font-semibold">${r.name}</span>
+        <span class="ml-2 text-gray-600 font-mono">${r.label}</span>
+        ${r.val ? `<span class="ml-2 text-gray-400">(${r.val})</span>` : ''}
+      </div>
+      <span class="px-2 py-0.5 rounded-full font-semibold ${r.ok ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}">
+        ${r.ok ? '✓ Set' : '✗ Missing'}
+      </span>
+    </div>
+  `).join('');
+}
+
+async function saveInviteCode() {
+  const code = el('settings-invite-code').value.trim();
+  const { ok, data } = await api('PUT', '/api/admin/settings', { inviteCode: code });
+  const msg = el('settings-msg');
+  if (ok) {
+    msg.textContent = 'Invite code saved!';
+    msg.classList.remove('hidden');
+    toast('Invite code saved ✓');
+    setTimeout(() => msg.classList.add('hidden'), 3000);
+  } else toast('Error: ' + (data.error || 'Save failed'), 'text-red-400');
+}
+
+// ═══════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════
+checkAuth();
+</script>
+</body>
+</html>

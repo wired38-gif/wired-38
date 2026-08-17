@@ -621,7 +621,7 @@ app.post("/api/entrata-chat", async (req, res) => {
       const ai = getAiClient();
       const chat = ai.chats.create({
         model: "gemini-2.0-flash",
-        config: { systemInstruction: ENTRATA_SYSTEM_PROMPT },
+        config: { systemInstruction: getAgentPrompt("entrata", ENTRATA_SYSTEM_PROMPT) },
         history,
       });
       const response = await chat.sendMessage({ message });
@@ -713,7 +713,7 @@ app.post("/api/myk-chat", async (req, res) => {
       const ai = getAiClient();
       const chat = ai.chats.create({
         model: "gemini-2.0-flash",
-        config: { systemInstruction: MYK_BRAIN_SYSTEM_PROMPT },
+        config: { systemInstruction: getAgentPrompt("myk-brain", MYK_BRAIN_SYSTEM_PROMPT) },
         history,
       });
       const response = await chat.sendMessage({ message });
@@ -742,6 +742,64 @@ app.post("/api/myk-chat", async (req, res) => {
     res.status(500).json({ error: err.message || "Chat service error." });
   }
 });
+
+// ─── Dynamic Agent Config Store ─────────────────────────────────────────────
+
+const AGENT_CONFIGS_FILE = path.join(DATA_DIR, "agent_configs.json");
+const APP_SETTINGS_FILE = path.join(DATA_DIR, "app_settings.json");
+
+interface AgentConfigRecord {
+  id: string;
+  systemPrompt: string;
+  updatedAt: string;
+}
+
+type AgentConfigStore = Record<string, AgentConfigRecord>;
+
+interface AppSettings {
+  inviteCode?: string;
+  updatedAt?: string;
+}
+
+function loadAgentConfigs(): AgentConfigStore {
+  try {
+    ensureDataDir();
+    if (fs.existsSync(AGENT_CONFIGS_FILE)) {
+      return JSON.parse(fs.readFileSync(AGENT_CONFIGS_FILE, "utf-8")) as AgentConfigStore;
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveAgentConfigs(store: AgentConfigStore) {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(AGENT_CONFIGS_FILE, JSON.stringify(store, null, 2));
+  } catch { /* ignore */ }
+}
+
+function loadAppSettings(): AppSettings {
+  try {
+    ensureDataDir();
+    if (fs.existsSync(APP_SETTINGS_FILE)) {
+      return JSON.parse(fs.readFileSync(APP_SETTINGS_FILE, "utf-8")) as AppSettings;
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveAppSettings(settings: AppSettings) {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(APP_SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  } catch { /* ignore */ }
+}
+
+let agentConfigs: AgentConfigStore = loadAgentConfigs();
+
+function getAgentPrompt(id: string, defaultPrompt: string): string {
+  return agentConfigs[id]?.systemPrompt ?? defaultPrompt;
+}
 
 // ─── Queen (Queenscustoms.shop) Chat & Ticket Endpoints ──────────────────────
 
@@ -927,7 +985,7 @@ app.post("/api/queen-chat", async (req, res) => {
       const ai = getAiClient();
       const chat = ai.chats.create({
         model: "gemini-2.0-flash",
-        config: { systemInstruction: QUEEN_SYSTEM_PROMPT },
+        config: { systemInstruction: getAgentPrompt("queen", QUEEN_SYSTEM_PROMPT) },
         history,
       });
       const response = await chat.sendMessage({ message });
@@ -1011,6 +1069,169 @@ app.get("/api/admin/queen-tickets", requireAuth, (req, res) => {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
   return res.json({ total: list.length, tickets: list });
+});
+
+// Admin: update queen ticket status
+app.patch("/api/admin/queen-tickets/:ticketId", requireAuth, (req, res) => {
+  const { ticketId } = req.params;
+  const { status } = req.body as { status: "open" | "in-progress" | "resolved" };
+  const validStatuses = ["open", "in-progress", "resolved"];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: "Invalid status. Must be open, in-progress, or resolved." });
+  }
+  const tickets = loadTickets();
+  if (!tickets[ticketId]) return res.status(404).json({ error: "Ticket not found." });
+  tickets[ticketId].status = status;
+  tickets[ticketId].updatedAt = new Date().toISOString();
+  saveTickets(tickets);
+  return res.json({ success: true, ticket: tickets[ticketId] });
+});
+
+// ─── Admin: Agent Configs ────────────────────────────────────────────────────
+
+const AGENT_DEFAULTS: Record<string, { name: string; defaultPrompt: string }> = {
+  entrata: { name: "Entrata Training Assistant", defaultPrompt: ENTRATA_SYSTEM_PROMPT },
+  "myk-brain": { name: "Myk's Brain (TheOptimizer)", defaultPrompt: MYK_BRAIN_SYSTEM_PROMPT },
+  queen: { name: "Queen (Queenscustoms.shop)", defaultPrompt: QUEEN_SYSTEM_PROMPT },
+};
+
+app.get("/api/admin/agent-configs", requireAuth, (req, res) => {
+  const configs = Object.entries(AGENT_DEFAULTS).map(([id, meta]) => ({
+    id,
+    name: meta.name,
+    systemPrompt: getAgentPrompt(id, meta.defaultPrompt),
+    defaultPrompt: meta.defaultPrompt,
+    isCustom: Boolean(agentConfigs[id]),
+    updatedAt: agentConfigs[id]?.updatedAt ?? null,
+  }));
+  return res.json({ configs });
+});
+
+app.put("/api/admin/agent-configs/:agentId", requireAuth, (req, res) => {
+  const { agentId } = req.params;
+  if (!AGENT_DEFAULTS[agentId]) return res.status(400).json({ error: "Unknown agent ID." });
+  const { systemPrompt } = req.body as { systemPrompt: string };
+  if (!systemPrompt || typeof systemPrompt !== "string" || !systemPrompt.trim()) {
+    return res.status(400).json({ error: "systemPrompt is required." });
+  }
+  agentConfigs[agentId] = { id: agentId, systemPrompt: systemPrompt.trim(), updatedAt: new Date().toISOString() };
+  saveAgentConfigs(agentConfigs);
+  return res.json({ success: true, updatedAt: agentConfigs[agentId].updatedAt });
+});
+
+app.delete("/api/admin/agent-configs/:agentId", requireAuth, (req, res) => {
+  const { agentId } = req.params;
+  if (agentConfigs[agentId]) {
+    delete agentConfigs[agentId];
+    saveAgentConfigs(agentConfigs);
+  }
+  return res.json({ success: true, message: "Reverted to default prompt." });
+});
+
+// ─── Admin: Trainees ─────────────────────────────────────────────────────────
+
+app.delete("/api/admin/trainees/:email", requireAuth, (req, res) => {
+  const email = decodeURIComponent(req.params.email).trim().toLowerCase();
+  if (!accounts[email]) return res.status(404).json({ error: "Trainee not found." });
+  delete accounts[email];
+  saveAccounts(accounts);
+  return res.json({ success: true });
+});
+
+// ─── Admin: Settings ─────────────────────────────────────────────────────────
+
+app.get("/api/admin/settings", requireAuth, (req, res) => {
+  const settings = loadAppSettings();
+  return res.json({
+    inviteCode: settings.inviteCode ?? getInviteCode(),
+    inviteCodeIsOverridden: Boolean(settings.inviteCode),
+    geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
+    authConfigured: isAuthConfigured(),
+    daemonConfigured: Boolean(process.env.MYK_DAEMON_URL && process.env.DAEMON_SECRET),
+    daemonUrl: process.env.MYK_DAEMON_URL ?? null,
+    updatedAt: settings.updatedAt ?? null,
+  });
+});
+
+app.put("/api/admin/settings", requireAuth, (req, res) => {
+  const { inviteCode } = req.body as { inviteCode?: string };
+  const settings = loadAppSettings();
+  if (inviteCode !== undefined) {
+    settings.inviteCode = inviteCode.trim().toUpperCase() || undefined;
+  }
+  settings.updatedAt = new Date().toISOString();
+  saveAppSettings(settings);
+  return res.json({ success: true, settings });
+});
+
+// ─── Mac Daemon Proxy ────────────────────────────────────────────────────────
+
+function getDaemonUrl(): string | null {
+  return process.env.MYK_DAEMON_URL?.replace(/\/$/, "") ?? null;
+}
+
+function getDaemonSecret(): string | null {
+  return process.env.DAEMON_SECRET ?? null;
+}
+
+async function daemonFetch(method: string, daemonPath: string, body?: unknown): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const base = getDaemonUrl();
+  const secret = getDaemonSecret();
+  if (!base || !secret) {
+    return { ok: false, status: 503, data: { error: "Daemon not configured. Set MYK_DAEMON_URL and DAEMON_SECRET on the server." } };
+  }
+  const url = `${base}${daemonPath.startsWith("/") ? "" : "/"}${daemonPath}`;
+  const headers: Record<string, string> = {
+    "Authorization": `Bearer ${secret}`,
+    "Content-Type": "application/json",
+    "X-Super-Agent": "myk-super-agent",
+  };
+  const opts: RequestInit = { method, headers, signal: AbortSignal.timeout(30_000) };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  try {
+    const res = await fetch(url, opts);
+    const data = await res.json().catch(() => ({ raw: true }));
+    return { ok: res.ok, status: res.status, data };
+  } catch (err: any) {
+    return { ok: false, status: 502, data: { error: err.message ?? "Daemon unreachable." } };
+  }
+}
+
+// GET /api/admin/daemon/status — ping the Mac daemon
+app.get("/api/admin/daemon/status", requireAuth, async (req, res) => {
+  const result = await daemonFetch("GET", "/status");
+  res.status(result.status).json(result.data);
+});
+
+// POST /api/admin/daemon/run — run a shell command on the Mac
+app.post("/api/admin/daemon/run", requireAuth, async (req, res) => {
+  const { command, cwd, timeout } = req.body as { command: string; cwd?: string; timeout?: number };
+  if (!command || typeof command !== "string") {
+    return res.status(400).json({ error: "command is required." });
+  }
+  const result = await daemonFetch("POST", "/run", { command, cwd, timeout });
+  res.status(result.status).json(result.data);
+});
+
+// POST /api/admin/daemon/build — trigger a build on the Mac
+app.post("/api/admin/daemon/build", requireAuth, async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const result = await daemonFetch("POST", "/build", body);
+  res.status(result.status).json(result.data);
+});
+
+// Generic daemon proxy — forwards any path/method to the Mac daemon
+app.all(["/api/admin/daemon/proxy/:path(*)", "/api/admin/daemon/proxy"], requireAuth, async (req, res) => {
+  const daemonPath = "/" + ((req.params as Record<string, string>).path ?? "");
+  const hasBody = ["POST", "PUT", "PATCH"].includes(req.method);
+  const result = await daemonFetch(req.method, daemonPath, hasBody ? req.body : undefined);
+  res.status(result.status).json(result.data);
+});
+
+// ─── Serve Super-Agent admin panel ──────────────────────────────────────────
+
+app.get("/super-agent.html", (req, res) => {
+  res.sendFile(path.join(process.cwd(), "public", "super-agent.html"));
 });
 
 // Setup development or production server modes
